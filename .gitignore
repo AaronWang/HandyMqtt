@@ -2,6 +2,7 @@
 /dist/
 /out-tsc/
 /tmp/
+/release/
 /coverage/
 /e2e/test-output/
 /.angular/

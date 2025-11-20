@@ -1,0 +1,1024 @@
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterOutlet } from '@angular/router';
+import { FormsModule } from '@angular/forms';
+import { LocalStorageService } from './services/local-storage.service';
+import { MqttClientService } from './services/mqtt-client.service';
+
+interface MqttConfig {
+  name: string;
+  host: string;
+  port: number;
+  protocol: 'ws' | 'wss' | 'mqtt' | 'mqtts';
+  clientId: string;
+  username: string;
+  password: string;
+  keepAlive: number;
+  cleanSession: boolean;
+  useSSL: boolean;
+  connectTimeout: number;
+  autoReconnect: boolean;
+  mqttVersion: '3.1.1' | '5.0';
+  useCertificateAuth: boolean;
+  caFilePath: string;
+  clientCertPath: string;
+  clientKeyPath: string;
+}
+
+interface Tab {
+  id: number;
+  label: string;
+  connected: boolean;
+  config?: MqttConfig;
+  sendTopics: Topic[];
+  selectedSendTopicId: number | null;
+  subscriptions: Subscription[];
+  messageEditors: MessageEditor[];
+  selectedMessageEditorId: number | null;
+  nextTopicId: number;
+  nextSubscriptionId: number;
+  nextMessageEditorId: number;
+}
+
+interface Topic {
+  id: number;
+  name: string;
+}
+
+interface Subscription {
+  id: number;
+  topic: string;
+  messageCount: number;
+  lastMessage: string;
+  messages: Array<{ timestamp: Date, payload: string }>;
+  subscribed: boolean;
+}
+
+interface MessageEditor {
+  id: number;
+  name: string;
+  qos: number;
+  retain: boolean;
+  message: string;
+}
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [CommonModule, RouterOutlet, FormsModule],
+  templateUrl: './app.component.html',
+  styleUrl: './app.component.scss'
+})
+export class AppComponent implements OnInit, OnDestroy {
+  title = 'handymqtt-app';
+
+  private saveTimeout: any;
+
+  constructor(
+    private localStorageService: LocalStorageService,
+    private mqttClientService: MqttClientService
+  ) { }
+
+  ngOnInit(): void {
+    this.loadDataFromStorage();
+  }
+
+  ngOnDestroy(): void {
+    this.saveDataToStorage();
+    // Disconnect all MQTT clients
+    this.tabs.forEach(tab => {
+      if (tab.connected) {
+        this.mqttClientService.disconnect(tab.id);
+      }
+    });
+  }
+
+  private loadDataFromStorage(): void {
+    const savedData = this.localStorageService.loadData();
+    if (savedData) {
+      this.tabs = savedData.tabs;
+      this.activeTabId = savedData.activeTabId;
+      this.nextTabId = savedData.nextTabId;
+      this.leftPanelWidth = savedData.leftPanelWidth;
+      this.subscribeAreaHeight = savedData.subscribeAreaHeight;
+
+      // Reconnect to MQTT brokers that were connected before
+      this.reconnectSavedConnections();
+    }
+  }
+
+  private async reconnectSavedConnections(): Promise<void> {
+    for (const tab of this.tabs) {
+      if (tab.connected && tab.config) {
+        try {
+          await this.connectToMqtt(tab.id, tab.config);
+          console.log(`Reconnected to ${tab.label}`);
+        } catch (error) {
+          console.error(`Failed to reconnect to ${tab.label}:`, error);
+          tab.connected = false;
+        }
+      }
+    }
+  }
+
+  private async connectToMqtt(tabId: number, config: MqttConfig): Promise<void> {
+    try {
+      await this.mqttClientService.connect(tabId, config);
+
+      // Set up message callback for this connection
+      this.mqttClientService.setMessageCallback(tabId, (topic: string, message: string) => {
+        this.handleIncomingMessage(topic, message);
+      });
+
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.connected = true;
+      }
+    } catch (error) {
+      const tab = this.tabs.find(t => t.id === tabId);
+      if (tab) {
+        tab.connected = false;
+      }
+      throw error;
+    }
+  }
+
+  private handleIncomingMessage(topic: string, message: string): void {
+    console.log('Received message on topic:', topic, 'message:', message);
+
+    if (!this.currentTab) return;
+
+    // Find matching subscriptions (support wildcards)
+    const matchingSubs = this.currentTab.subscriptions.filter(sub => this.topicMatches(sub.topic, topic));
+
+    matchingSubs.forEach(sub => {
+      const newMessage = {
+        timestamp: new Date(),
+        payload: message
+      };
+      sub.messages.push(newMessage);
+      sub.messageCount = sub.messages.length;
+      sub.lastMessage = message.substring(0, 50); // Preview first 50 chars
+    });
+
+    // Save updated subscriptions
+    this.debounceSave();
+  }
+
+  private topicMatches(pattern: string, topic: string): boolean {
+    // Convert MQTT wildcards to regex
+    // + matches a single level
+    // # matches multiple levels
+    const regexPattern = pattern
+      .replace(/\+/g, '[^/]+')
+      .replace(/#/g, '.*')
+      .replace(/\//g, '\\/');
+
+    const regex = new RegExp(`^${regexPattern}$`);
+    return regex.test(topic);
+  }
+
+  private saveDataToStorage(): void {
+    const data = {
+      tabs: this.tabs,
+      activeTabId: this.activeTabId,
+      nextTabId: this.nextTabId,
+      leftPanelWidth: this.leftPanelWidth,
+      subscribeAreaHeight: this.subscribeAreaHeight
+    };
+    this.localStorageService.saveData(data);
+  }
+
+  private debounceSave(): void {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+    }
+    this.saveTimeout = setTimeout(() => {
+      this.saveDataToStorage();
+    }, 500);
+  }
+
+  // Public method to call from template
+  onDataChange(): void {
+    this.debounceSave();
+  }
+
+  // Dialog
+  showConfigDialog = false;
+  configDialogTab: 'general' | 'advanced' = 'general';
+  dialogMode: 'create' | 'edit' = 'create';
+  editingTabId: number | null = null;
+  mqttConfig: MqttConfig = this.getDefaultConfig();
+  showMessageEditorNameDialog = false;
+  editingMessageEditorId: number | null = null;
+  messageEditorNameInput = '';
+  showAddTopicDialog = false;
+  newTopicName = '';
+  showConfirmDialog = false;
+  confirmDialogTitle = '';
+  confirmDialogMessage = '';
+  confirmDialogCallback: (() => void) | null = null;
+
+  // Tabs
+  tabs: Tab[] = [
+    {
+      id: 1,
+      label: 'Client 1',
+      connected: false,
+      sendTopics: [
+        { id: 1, name: 'home/temperature' },
+        { id: 2, name: 'home/humidity' },
+        { id: 3, name: 'sensor/data' }
+      ],
+      selectedSendTopicId: null,
+      subscriptions: [
+        {
+          id: 1, topic: 'home/#', messageCount: 5, lastMessage: 'Temperature: 22°C', messages: [
+            { timestamp: new Date(), payload: '{"temperature": 22, "unit": "celsius"}' }
+          ],
+          subscribed: true
+        },
+        {
+          id: 2, topic: 'sensor/+/status', messageCount: 2, lastMessage: 'Status: Online', messages: [
+            { timestamp: new Date(), payload: 'Status: Online' }
+          ],
+          subscribed: false
+        }
+      ],
+      messageEditors: [
+        {
+          id: 1,
+          name: 'Message 1',
+          qos: 0,
+          retain: false,
+          message: ''
+        }
+      ],
+      selectedMessageEditorId: 1,
+      nextTopicId: 4,
+      nextSubscriptionId: 3,
+      nextMessageEditorId: 2
+    }
+  ];
+  activeTabId = 1;
+  nextTabId = 2;
+
+  // Layout
+  leftPanelWidth = 20; // percentage
+  subscribeAreaHeight = 60; // percentage
+
+  // Drag state
+  draggedTopicId: number | null = null;
+  draggedSubscriptionId: number | null = null;
+  draggedMessageEditorId: number | null = null;
+
+  // Dialog state
+  showSubscriptionDialog = false;
+  newSubscriptionTopic = '';
+
+  // Computed getters for current tab data
+  get currentTab(): Tab | undefined {
+    return this.tabs.find(t => t.id === this.activeTabId);
+  }
+
+  get sendTopics(): Topic[] {
+    return this.currentTab?.sendTopics || [];
+  }
+
+  get selectedSendTopicId(): number | null {
+    return this.currentTab?.selectedSendTopicId || null;
+  }
+
+  set selectedSendTopicId(value: number | null) {
+    if (this.currentTab) {
+      this.currentTab.selectedSendTopicId = value;
+    }
+  }
+
+  get subscriptions(): Subscription[] {
+    return this.currentTab?.subscriptions || [];
+  }
+
+  get messageEditors(): MessageEditor[] {
+    return this.currentTab?.messageEditors || [];
+  }
+
+  get selectedMessageEditorId(): number | null {
+    return this.currentTab?.selectedMessageEditorId || null;
+  }
+
+  set selectedMessageEditorId(value: number | null) {
+    if (this.currentTab) {
+      this.currentTab.selectedMessageEditorId = value;
+    }
+  }
+
+  // Tab methods
+  getDefaultConfig(): MqttConfig {
+    return {
+      name: '',
+      host: 'localhost',
+      port: 1883,
+      protocol: 'mqtt',
+      clientId: 'mqtt_' + Math.random().toString(16).substring(2, 10),
+      username: '',
+      password: '',
+      keepAlive: 60,
+      cleanSession: true,
+      useSSL: false,
+      connectTimeout: 30,
+      autoReconnect: true,
+      mqttVersion: '3.1.1',
+      useCertificateAuth: false,
+      caFilePath: '',
+      clientCertPath: '',
+      clientKeyPath: ''
+    };
+  }
+  selectTab(tabId: number): void {
+    this.activeTabId = tabId;
+  }
+
+  closeTab(event: Event, tabId: number): void {
+    event.stopPropagation();
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    this.showConfirm('Close Connection', `Are you sure you want to close "${tab.label}"?`, () => {
+      const index = this.tabs.findIndex(t => t.id === tabId);
+      if (index > -1) {
+        this.tabs.splice(index, 1);
+        if (this.activeTabId === tabId && this.tabs.length > 0) {
+          this.activeTabId = this.tabs[0].id;
+        }
+      }
+      this.debounceSave();
+    });
+  }
+
+  createNewClient(): void {
+    this.dialogMode = 'create';
+    this.editingTabId = null;
+    this.mqttConfig = this.getDefaultConfig();
+    this.mqttConfig.name = `Client ${this.nextTabId}`;
+    this.configDialogTab = 'general';
+    this.showConfigDialog = true;
+  }
+
+  switchConfigTab(tab: 'general' | 'advanced'): void {
+    this.configDialogTab = tab;
+  }
+
+  editTab(event: Event, tabId: number): void {
+    event.stopPropagation();
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (tab) {
+      this.dialogMode = 'edit';
+      this.editingTabId = tabId;
+      if (tab.config) {
+        this.mqttConfig = { ...tab.config };
+      } else {
+        this.mqttConfig = this.getDefaultConfig();
+        this.mqttConfig.name = tab.label;
+      }
+      this.configDialogTab = 'general';
+      this.showConfigDialog = true;
+    }
+  }
+
+  saveConfig(): void {
+    if (!this.mqttConfig.name.trim()) {
+      alert('Please enter a client name');
+      return;
+    }
+
+    if (this.dialogMode === 'create') {
+      const newTab: Tab = {
+        id: this.nextTabId++,
+        label: this.mqttConfig.name,
+        connected: false,
+        config: { ...this.mqttConfig },
+        sendTopics: [],
+        selectedSendTopicId: null,
+        subscriptions: [],
+        messageEditors: [
+          {
+            id: 1,
+            name: 'Message 1',
+            qos: 0,
+            retain: false,
+            message: ''
+          }
+        ],
+        selectedMessageEditorId: 1,
+        nextTopicId: 1,
+        nextSubscriptionId: 1,
+        nextMessageEditorId: 2
+      };
+      this.tabs.push(newTab);
+      this.activeTabId = newTab.id;
+
+      // Connect to MQTT broker immediately
+      this.connectToMqtt(newTab.id, newTab.config!)
+        .then(() => {
+          console.log(`Connected to ${newTab.label}`);
+          this.debounceSave();
+        })
+        .catch(error => {
+          console.error(`Failed to connect to ${newTab.label}:`, error);
+          alert(`Failed to connect: ${error.message || 'Unknown error'}`);
+          this.debounceSave();
+        });
+    } else if (this.dialogMode === 'edit' && this.editingTabId !== null) {
+      const tab = this.tabs.find(t => t.id === this.editingTabId);
+      if (tab) {
+        const wasConnected = tab.connected;
+        tab.label = this.mqttConfig.name;
+        tab.config = { ...this.mqttConfig };
+
+        // If was connected, disconnect and reconnect with new config
+        if (wasConnected) {
+          this.mqttClientService.disconnect(tab.id);
+          tab.connected = false;
+        } else {
+          this.debounceSave();
+        }
+        this.connectToMqtt(tab.id, tab.config)
+          .then(() => {
+            console.log(`Reconnected to ${tab.label} with new config`);
+            this.debounceSave();
+          })
+          .catch(error => {
+            console.error(`Failed to reconnect to ${tab.label}:`, error);
+            alert(`Failed to reconnect: ${error.message || 'Unknown error'}`);
+            this.debounceSave();
+          });
+      }
+    }
+
+    this.closeConfigDialog();
+  }
+
+  closeConfigDialog(): void {
+    this.showConfigDialog = false;
+    this.editingTabId = null;
+  }
+
+  // File selection methods for certificate paths
+  selectCaFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.crt,.pem,.cer';
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        // In Electron, we can access the full path via webkitRelativePath or we need IPC
+        // For now, use the file name and user will need to enter full path manually
+        const reader = new FileReader();
+        reader.onload = () => {
+          // Store the file name, user should provide full path
+          this.mqttConfig.caFilePath = (file as any).path || file.name;
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  }
+
+  selectClientCertFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.crt,.pem,.cer';
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.mqttConfig.clientCertPath = (file as any).path || file.name;
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  }
+
+  selectClientKeyFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.key,.pem';
+    input.onchange = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.mqttConfig.clientKeyPath = (file as any).path || file.name;
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  }
+
+  // Send topics methods
+  selectSendTopic(topicId: number): void {
+    this.selectedSendTopicId = topicId;
+  }
+
+  addSendTopic(): void {
+    if (!this.currentTab) {
+      alert('Please create a MQTT connection first');
+      return;
+    }
+
+    this.newTopicName = '';
+    this.showAddTopicDialog = true;
+  }
+
+  saveNewTopic(): void {
+    if (!this.currentTab || !this.newTopicName.trim()) {
+      return;
+    }
+
+    const newTopic: Topic = {
+      id: this.currentTab.nextTopicId++,
+      name: this.newTopicName.trim()
+    };
+    this.currentTab.sendTopics.push(newTopic);
+    this.debounceSave();
+    this.closeAddTopicDialog();
+  }
+
+  closeAddTopicDialog(): void {
+    this.showAddTopicDialog = false;
+    this.newTopicName = '';
+  }
+
+  deleteSendTopic(event: Event, topicId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    const topic = this.currentTab.sendTopics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    this.showConfirm('Delete Topic', `Are you sure you want to delete topic "${topic.name}"?`, () => {
+      if (!this.currentTab) return;
+      const index = this.currentTab.sendTopics.findIndex(t => t.id === topicId);
+      if (index > -1) {
+        this.currentTab.sendTopics.splice(index, 1);
+        if (this.currentTab.selectedSendTopicId === topicId) {
+          this.currentTab.selectedSendTopicId = null;
+        }
+        this.debounceSave();
+      }
+    });
+  }
+
+  // Drag and drop methods
+  onDragStart(event: DragEvent, topicId: number): void {
+    this.draggedTopicId = topicId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/html', '');
+    }
+  }
+
+  onDragEnd(event: DragEvent): void {
+    this.draggedTopicId = null;
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onDrop(event: DragEvent, dropIndex: number): void {
+    event.preventDefault();
+    if (this.draggedTopicId === null) return;
+
+    const dragIndex = this.sendTopics.findIndex(t => t.id === this.draggedTopicId);
+    if (dragIndex === -1 || dragIndex === dropIndex) return;
+
+    const draggedTopic = this.sendTopics[dragIndex];
+    this.sendTopics.splice(dragIndex, 1);
+    this.sendTopics.splice(dropIndex, 0, draggedTopic);
+  }
+
+  // Subscription methods
+  addSubscription(): void {
+    if (!this.currentTab) {
+      alert('Please create a MQTT connection first');
+      return;
+    }
+
+    this.newSubscriptionTopic = '';
+    this.showSubscriptionDialog = true;
+  }
+
+  saveSubscription(): void {
+    if (!this.newSubscriptionTopic.trim()) {
+      alert('Please enter a topic');
+      return;
+    }
+
+    // Check if current tab is connected
+    const currentTab = this.tabs.find(t => t.id === this.activeTabId);
+    if (!currentTab || !currentTab.connected) {
+      alert('Please connect to MQTT broker first');
+      return;
+    }
+
+    const newSub: Subscription = {
+      id: currentTab.nextSubscriptionId++,
+      topic: this.newSubscriptionTopic.trim(),
+      messageCount: 0,
+      lastMessage: 'No messages yet',
+      messages: [],
+      subscribed: false
+    };
+    currentTab.subscriptions.push(newSub);
+
+    // Subscribe to the topic via MQTT
+    this.mqttClientService.subscribe(this.activeTabId, newSub.topic, 0)
+      .then(() => {
+        console.log('Subscribed to topic:', newSub.topic);
+        newSub.subscribed = true;
+        this.debounceSave();
+      })
+      .catch(error => {
+        console.error('Failed to subscribe:', error);
+        alert(`Failed to subscribe: ${error.message || 'Unknown error'}`);
+        // Remove subscription if failed
+        const index = currentTab.subscriptions.findIndex(s => s.id === newSub.id);
+        if (index > -1) {
+          currentTab.subscriptions.splice(index, 1);
+        }
+      });
+
+    this.closeSubscriptionDialog();
+  }
+
+  closeSubscriptionDialog(): void {
+    this.showSubscriptionDialog = false;
+  }
+
+  clearSubscriptionMessages(event: Event, subId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    const sub = this.currentTab.subscriptions.find(s => s.id === subId);
+    if (!sub) return;
+
+    this.showConfirm('Clear Messages', `Are you sure you want to clear all messages from "${sub.topic}"?`, () => {
+      if (!this.currentTab) return;
+      const sub = this.currentTab.subscriptions.find(s => s.id === subId);
+      if (!sub) return;
+
+      sub.messages = [];
+      sub.messageCount = 0;
+      this.debounceSave();
+    });
+  }
+
+  deleteSubscription(event: Event, subId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    const sub = this.currentTab.subscriptions.find(s => s.id === subId);
+    if (!sub) return;
+
+    this.showConfirm('Unsubscribe', `Are you sure you want to unsubscribe from "${sub.topic}"?`, () => {
+      if (!this.currentTab) return;
+      const sub = this.currentTab.subscriptions.find(s => s.id === subId);
+      if (!sub) return;
+
+      if (this.currentTab.connected) {
+        // Unsubscribe from MQTT
+        this.mqttClientService.unsubscribe(this.activeTabId, sub.topic)
+          .then(() => {
+            console.log('Unsubscribed from topic:', sub.topic);
+          })
+          .catch(error => {
+            console.error('Failed to unsubscribe:', error);
+          });
+      }
+
+      const index = this.currentTab.subscriptions.findIndex(s => s.id === subId);
+      if (index > -1) {
+        this.currentTab.subscriptions.splice(index, 1);
+        this.debounceSave();
+      }
+    });
+  }
+
+  formatMessage(message: string): string {
+    try {
+      const parsed = JSON.parse(message);
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return message;
+    }
+  }
+
+  isJsonMessage(message: string): boolean {
+    try {
+      JSON.parse(message);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  onSubscriptionDragStart(event: DragEvent, subId: number): void {
+    this.draggedSubscriptionId = subId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onSubscriptionDragEnd(event: DragEvent): void {
+    this.draggedSubscriptionId = null;
+  }
+
+  onSubscriptionDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onSubscriptionDrop(event: DragEvent, targetIndex: number): void {
+    event.preventDefault();
+    if (this.draggedSubscriptionId === null || !this.currentTab) return;
+
+    const draggedIndex = this.currentTab.subscriptions.findIndex(s => s.id === this.draggedSubscriptionId);
+    if (draggedIndex === -1 || draggedIndex === targetIndex) return;
+
+    const [draggedItem] = this.currentTab.subscriptions.splice(draggedIndex, 1);
+    this.currentTab.subscriptions.splice(targetIndex, 0, draggedItem);
+    this.draggedSubscriptionId = null;
+    this.debounceSave();
+  }
+
+  // Message methods
+  // Message Editor methods
+  addMessageEditor(): void {
+    if (!this.currentTab) {
+      alert('Please create a MQTT connection first');
+      return;
+    }
+
+    this.editingMessageEditorId = null;
+    this.messageEditorNameInput = `Message ${this.currentTab.nextMessageEditorId}`;
+    this.showMessageEditorNameDialog = true;
+  } selectMessageEditor(editorId: number): void {
+    this.selectedMessageEditorId = editorId;
+  }
+
+  formatJsonInEditor(event: Event, editorId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    const editor = this.currentTab.messageEditors.find(e => e.id === editorId);
+    if (!editor) return;
+
+    try {
+      const parsed = JSON.parse(editor.message);
+      editor.message = JSON.stringify(parsed, null, 2);
+      this.debounceSave();
+    } catch (error) {
+      alert('Invalid JSON format. Cannot format the message.');
+    }
+  }
+
+  openMessageEditorNameDialog(event: Event, editorId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    const editor = this.currentTab.messageEditors.find(e => e.id === editorId);
+    if (editor) {
+      this.editingMessageEditorId = editorId;
+      this.messageEditorNameInput = editor.name;
+      this.showMessageEditorNameDialog = true;
+    }
+  }
+
+  saveMessageEditorName(): void {
+    if (!this.currentTab) return;
+
+    if (!this.messageEditorNameInput.trim()) {
+      alert('Please enter a name');
+      return;
+    }
+
+    if (this.editingMessageEditorId === null) {
+      // Creating new message editor
+      const newEditor: MessageEditor = {
+        id: this.currentTab.nextMessageEditorId++,
+        name: this.messageEditorNameInput.trim(),
+        qos: 0,
+        retain: false,
+        message: ''
+      };
+      this.currentTab.messageEditors.push(newEditor);
+      this.currentTab.selectedMessageEditorId = newEditor.id;
+    } else {
+      // Editing existing message editor
+      const editor = this.currentTab.messageEditors.find(e => e.id === this.editingMessageEditorId);
+      if (editor) {
+        editor.name = this.messageEditorNameInput.trim();
+      }
+    }
+    this.closeMessageEditorNameDialog();
+    this.debounceSave();
+  }
+
+  closeMessageEditorNameDialog(): void {
+    this.showMessageEditorNameDialog = false;
+    this.editingMessageEditorId = null;
+    this.messageEditorNameInput = '';
+  }
+
+  deleteMessageEditor(event: Event, editorId: number): void {
+    event.stopPropagation();
+    if (!this.currentTab) return;
+
+    if (this.currentTab.messageEditors.length <= 1) {
+      alert('At least one message editor is required');
+      return;
+    }
+
+    const index = this.currentTab.messageEditors.findIndex(e => e.id === editorId);
+    if (index > -1) {
+      this.currentTab.messageEditors.splice(index, 1);
+      if (this.currentTab.selectedMessageEditorId === editorId) {
+        this.currentTab.selectedMessageEditorId = this.currentTab.messageEditors[0]?.id || null;
+      }
+      this.debounceSave();
+    }
+  }
+
+  onMessageEditorDragStart(event: DragEvent, editorId: number): void {
+    this.draggedMessageEditorId = editorId;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onMessageEditorDragEnd(event: DragEvent): void {
+    this.draggedMessageEditorId = null;
+  }
+
+  onMessageEditorDragOver(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }
+
+  onMessageEditorDrop(event: DragEvent, targetIndex: number): void {
+    event.preventDefault();
+    if (this.draggedMessageEditorId === null || !this.currentTab) return;
+
+    const draggedIndex = this.currentTab.messageEditors.findIndex(e => e.id === this.draggedMessageEditorId);
+    if (draggedIndex === -1 || draggedIndex === targetIndex) return;
+
+    const [draggedItem] = this.currentTab.messageEditors.splice(draggedIndex, 1);
+    this.currentTab.messageEditors.splice(targetIndex, 0, draggedItem);
+    this.draggedMessageEditorId = null;
+    this.debounceSave();
+  }
+
+  sendMessage(): void {
+    if (!this.currentTab) return;
+
+    const selectedEditor = this.currentTab.messageEditors.find(e => e.id === this.currentTab!.selectedMessageEditorId);
+    if (!selectedEditor) return;
+
+    const selectedTopic = this.currentTab.sendTopics.find(t => t.id === this.currentTab!.selectedSendTopicId);
+    if (!selectedTopic) {
+      alert('Please select a topic from the left panel');
+      return;
+    }
+
+    // Check if current tab is connected
+    if (!this.currentTab.connected) {
+      alert('Please connect to MQTT broker first');
+      return;
+    }
+
+    // Publish message via MQTT client service
+    this.mqttClientService.publish(
+      this.activeTabId,
+      selectedTopic.name,
+      selectedEditor.message,
+      selectedEditor.qos,
+      selectedEditor.retain
+    ).then(() => {
+      console.log('Message sent successfully:', {
+        topic: selectedTopic.name,
+        qos: selectedEditor.qos,
+        retain: selectedEditor.retain,
+        message: selectedEditor.message
+      });
+      // Optionally show success feedback
+    }).catch(error => {
+      console.error('Failed to send message:', error);
+      alert(`Failed to send message: ${error.message || 'Unknown error'}`);
+    });
+  }
+
+  // Confirm dialog methods
+  showConfirm(title: string, message: string, callback: () => void): void {
+    this.confirmDialogTitle = title;
+    this.confirmDialogMessage = message;
+    this.confirmDialogCallback = callback;
+    this.showConfirmDialog = true;
+  }
+
+  confirmAction(): void {
+    if (this.confirmDialogCallback) {
+      this.confirmDialogCallback();
+    }
+    this.closeConfirmDialog();
+  }
+
+  closeConfirmDialog(): void {
+    this.showConfirmDialog = false;
+    this.confirmDialogTitle = '';
+    this.confirmDialogMessage = '';
+    this.confirmDialogCallback = null;
+  }
+
+  // Resize methods
+  private isResizing = false;
+  private isVerticalResizing = false;
+
+  startResize(event: MouseEvent): void {
+    this.isResizing = true;
+    event.preventDefault();
+
+    const contentArea = (event.target as HTMLElement).parentElement;
+    if (!contentArea) return;
+
+    const mouseMoveHandler = (e: MouseEvent) => {
+      if (this.isResizing && contentArea) {
+        const rect = contentArea.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const newWidth = (offsetX / rect.width) * 100;
+        this.leftPanelWidth = Math.max(10, Math.min(50, newWidth));
+      }
+    };
+
+    const mouseUpHandler = () => {
+      this.isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', mouseMoveHandler);
+      document.removeEventListener('mouseup', mouseUpHandler);
+      this.debounceSave();
+    };
+
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', mouseMoveHandler);
+    document.addEventListener('mouseup', mouseUpHandler);
+  }
+
+  startVerticalResize(event: MouseEvent): void {
+    this.isVerticalResizing = true;
+    event.preventDefault();
+
+    const rightPanel = (event.target as HTMLElement).parentElement;
+    if (!rightPanel) return;
+
+    const startY = event.clientY;
+    const startHeight = this.subscribeAreaHeight;
+
+    const mouseMoveHandler = (e: MouseEvent) => {
+      if (this.isVerticalResizing && rightPanel) {
+        e.preventDefault();
+        const rect = rightPanel.getBoundingClientRect();
+        const deltaY = e.clientY - startY;
+        const deltaPercent = (deltaY / rect.height) * 100;
+        const newHeight = startHeight + deltaPercent;
+        this.subscribeAreaHeight = Math.max(20, Math.min(80, newHeight));
+      }
+    };
+
+    const mouseUpHandler = () => {
+      this.isVerticalResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', mouseMoveHandler);
+      document.removeEventListener('mouseup', mouseUpHandler);
+      this.debounceSave();
+    };
+
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', mouseMoveHandler);
+    document.addEventListener('mouseup', mouseUpHandler);
+  }
+}
