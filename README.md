@@ -2,6 +2,8 @@
 
 A lightweight and user-friendly MQTT client built with **Angular** and **Electron**, designed specifically for developers to debug and test MQTT connections efficiently.
 
+![HandyMQTT Screenshot](docs/image.png)
+
 ## 🚀 Features
 
 - **Multi-Connection Management**: Create and manage multiple MQTT client connections simultaneously with a tabbed interface
@@ -78,6 +80,10 @@ All your configurations are automatically saved and will be restored when you re
 ## 💖 Support & Donation
 
 If you find HandyMQTT helpful for your development work, consider supporting the project!
+
+**Sponsor on GitHub** 💝
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=github)](https://github.com/sponsors/AaronWang)
 
 **Buy me a coffee** ☕
 
