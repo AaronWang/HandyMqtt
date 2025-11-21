@@ -8,6 +8,7 @@ export interface Tab {
     name: string;
     host: string;
     port: number;
+    path: string;
     protocol: 'ws' | 'wss' | 'mqtt' | 'mqtts';
     clientId: string;
     username: string;
@@ -66,10 +67,20 @@ export interface AppData {
 })
 export class LocalStorageService {
   private readonly STORAGE_KEY = 'handymqtt_app_data';
+  private isElectron: boolean = false;
 
-  constructor() { }
+  constructor() {
+    // Detect if running in Electron - match the detection logic used in other services
+    this.isElectron = typeof window !== 'undefined' &&
+      ((window as any).electron?.isElectron ||
+        (window as any).electron?.fs ||
+        typeof (window as any).require !== 'undefined');
+    console.log('LocalStorageService - Electron mode:', this.isElectron);
+    console.log('window.electron:', (window as any).electron);
+    console.log('window.electron.fs:', (window as any).electron?.fs);
+  }
 
-  saveData(data: AppData): void {
+  async saveData(data: AppData): Promise<void> {
     try {
       // Convert dates to ISO strings for serialization in subscriptions within tabs
       const serializedData = {
@@ -86,15 +97,56 @@ export class LocalStorageService {
         }))
       };
 
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(serializedData));
+      const jsonString = JSON.stringify(serializedData, null, 2);
+
+      if (this.isElectron && (window as any).electron?.fs) {
+        // Save to file system in Electron
+        try {
+          const result = await (window as any).electron.fs.saveData(jsonString);
+          if (!result.success) {
+            console.error('Failed to save data to file:', result.error);
+            // Fallback to localStorage
+            localStorage.setItem(this.STORAGE_KEY, jsonString);
+          }
+        } catch (error) {
+          console.error('Error calling electron.fs.saveData:', error);
+          // Fallback to localStorage
+          localStorage.setItem(this.STORAGE_KEY, jsonString);
+        }
+      } else {
+        // Save to localStorage in browser
+        localStorage.setItem(this.STORAGE_KEY, jsonString);
+      }
     } catch (error) {
-      console.error('Error saving data to localStorage:', error);
+      console.error('Error saving data:', error);
     }
   }
 
-  loadData(): AppData | null {
+  async loadData(): Promise<AppData | null> {
     try {
-      const data = localStorage.getItem(this.STORAGE_KEY);
+      let data: string | null = null;
+
+      if (this.isElectron && (window as any).electron?.fs) {
+        // Load from file system in Electron
+        try {
+          const result = await (window as any).electron.fs.loadData();
+          if (result.success) {
+            data = result.data;
+          } else {
+            console.error('Failed to load data from file:', result.error);
+            // Fallback to localStorage
+            data = localStorage.getItem(this.STORAGE_KEY);
+          }
+        } catch (error) {
+          console.error('Error calling electron.fs.loadData:', error);
+          // Fallback to localStorage
+          data = localStorage.getItem(this.STORAGE_KEY);
+        }
+      } else {
+        // Load from localStorage in browser
+        data = localStorage.getItem(this.STORAGE_KEY);
+      }
+
       if (!data) {
         return null;
       }
@@ -108,6 +160,7 @@ export class LocalStorageService {
           ...tab,
           config: tab.config ? {
             ...tab.config,
+            path: tab.config.path ?? '',
             connectTimeout: tab.config.connectTimeout ?? 30,
             autoReconnect: tab.config.autoReconnect ?? true,
             mqttVersion: tab.config.mqttVersion ?? '3.1.1',
@@ -157,20 +210,20 @@ export class LocalStorageService {
   }
 
   // Individual save methods for granular updates
-  saveTabs(tabs: Tab[]): void {
-    const data = this.loadData();
+  async saveTabs(tabs: Tab[]): Promise<void> {
+    const data = await this.loadData();
     if (data) {
       data.tabs = tabs;
-      this.saveData(data);
+      await this.saveData(data);
     }
   }
 
-  saveLayoutSettings(leftPanelWidth: number, subscribeAreaHeight: number): void {
-    const data = this.loadData();
+  async saveLayoutSettings(leftPanelWidth: number, subscribeAreaHeight: number): Promise<void> {
+    const data = await this.loadData();
     if (data) {
       data.leftPanelWidth = leftPanelWidth;
       data.subscribeAreaHeight = subscribeAreaHeight;
-      this.saveData(data);
+      await this.saveData(data);
     }
   }
 }

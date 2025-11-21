@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-electron_1.contextBridge.exposeInMainWorld('electron', {
+// When contextIsolation is false, we can directly set properties on window
+// instead of using contextBridge
+window.electron = {
+    isElectron: true,
     // Example: send message to main process
     send: (channel, data) => {
         const validChannels = ['toMain'];
@@ -18,5 +19,15 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
             electron_1.ipcRenderer.on(channel, (event, ...args) => func(...args));
         }
     },
-});
+    // File system operations
+    fs: {
+        saveData: (data) => electron_1.ipcRenderer.invoke('fs:saveData', data),
+        loadData: () => electron_1.ipcRenderer.invoke('fs:loadData'),
+    },
+    // File dialog
+    dialog: {
+        selectFile: (title, filters) => electron_1.ipcRenderer.invoke('dialog:selectFile', title, filters),
+    }
+};
+console.log('Preload script loaded, window.electron:', window.electron);
 //# sourceMappingURL=preload.js.map

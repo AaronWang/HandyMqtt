@@ -1,6 +1,6 @@
 {
   "name": "handymqtt-app",
-  "version": "v0.0.1",
+  "version": "v0.0.2",
   "description": "A lightweight MQTT client for developers",
   "author": "Aaron Wang <wrq3530@gmail.com>",
   "main": "dist-electron/main.js",
@@ -25,7 +25,9 @@
     "@angular/platform-browser": "^17.0.0",
     "@angular/platform-browser-dynamic": "^17.0.0",
     "@angular/router": "^17.0.0",
+    "mqtt": "^5.14.1",
     "rxjs": "~7.8.0",
+    "sweetalert2": "^11.26.3",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.2"
   },

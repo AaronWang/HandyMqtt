@@ -1,8 +1,80 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
-import * as url from 'url';
+import * as fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
+
+// Get user data directory
+const getDataDirectory = (): string => {
+  const userHome = app.getPath('home');
+  const dataDir = path.join(userHome, '.handymqtt');
+
+  // Create directory if it doesn't exist
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    console.log('Created data directory:', dataDir);
+  }
+
+  return dataDir;
+};
+
+const getDataFilePath = (): string => {
+  return path.join(getDataDirectory(), 'app-data.json');
+};
+
+// Setup IPC handlers
+const setupIpcHandlers = (): void => {
+  // Save data to file
+  ipcMain.handle('fs:saveData', async (event, data: string) => {
+    try {
+      const filePath = getDataFilePath();
+      fs.writeFileSync(filePath, data, 'utf-8');
+      console.log('Data saved to:', filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Error saving data:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // Load data from file
+  ipcMain.handle('fs:loadData', async () => {
+    try {
+      const filePath = getDataFilePath();
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        console.log('Data loaded from:', filePath);
+        return { success: true, data };
+      } else {
+        console.log('No data file found at:', filePath);
+        return { success: true, data: null };
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // File dialog for selecting files
+  ipcMain.handle('dialog:selectFile', async (event, title: string, filters: any[]) => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title,
+        properties: ['openFile'],
+        filters
+      });
+      
+      if (!result.canceled && result.filePaths.length > 0) {
+        return { success: true, filePath: result.filePaths[0] };
+      } else {
+        return { success: false, canceled: true };
+      }
+    } catch (error) {
+      console.error('Error opening file dialog:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+};
 
 function createWindow(): void {
   // Determine the correct preload path
@@ -15,8 +87,8 @@ function createWindow(): void {
     height: 800,
     webPreferences: {
       preload: preloadPath,
-      nodeIntegration: false,
-      contextIsolation: true,
+      nodeIntegration: true,
+      contextIsolation: false,
     },
   });
 
@@ -39,7 +111,10 @@ function createWindow(): void {
   });
 }
 
-app.on('ready', createWindow);
+app.on('ready', () => {
+  setupIpcHandlers();
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

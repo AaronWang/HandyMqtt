@@ -1,14 +1,16 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { LocalStorageService } from './services/local-storage.service';
 import { MqttClientService } from './services/mqtt-client.service';
+import Swal from 'sweetalert2';
 
 interface MqttConfig {
   name: string;
   host: string;
   port: number;
+  path: string;
   protocol: 'ws' | 'wss' | 'mqtt' | 'mqtts';
   clientId: string;
   username: string;
@@ -71,13 +73,29 @@ interface MessageEditor {
 })
 export class AppComponent implements OnInit, OnDestroy {
   title = 'handymqtt-app';
+  isElectron: boolean = false;
 
   private saveTimeout: any;
 
   constructor(
     private localStorageService: LocalStorageService,
-    private mqttClientService: MqttClientService
-  ) { }
+    private mqttClientService: MqttClientService,
+    private cdr: ChangeDetectorRef,
+    private ngZone: NgZone
+  ) {
+    // Detect if running in Electron
+    this.isElectron = !!(window &&
+      ((window as any).electron?.isElectron ||
+        (window as any).electron?.fs ||
+        typeof (window as any).require !== 'undefined'));
+    console.log('=== Electron Detection ===');
+    console.log('isElectron:', this.isElectron);
+    console.log('window.electron:', (window as any).electron);
+    console.log('window.electron.isElectron:', (window as any).electron?.isElectron);
+    console.log('window.electron.fs:', (window as any).electron?.fs);
+    console.log('window.electron.dialog:', (window as any).electron?.dialog);
+    console.log('window.require:', typeof (window as any).require);
+  }
 
   ngOnInit(): void {
     this.loadDataFromStorage();
@@ -93,8 +111,29 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  private loadDataFromStorage(): void {
-    const savedData = this.localStorageService.loadData();
+  // Toast notification helper
+  private showToast(icon: 'success' | 'error' | 'warning' | 'info', title: string, text?: string): void {
+    const Toast = Swal.mixin({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 3000,
+      timerProgressBar: true,
+      didOpen: (toast) => {
+        toast.addEventListener('mouseenter', Swal.stopTimer);
+        toast.addEventListener('mouseleave', Swal.resumeTimer);
+      }
+    });
+
+    Toast.fire({
+      icon,
+      title,
+      text
+    });
+  }
+
+  private async loadDataFromStorage(): Promise<void> {
+    const savedData = await this.localStorageService.loadData();
     if (savedData) {
       this.tabs = savedData.tabs;
       this.activeTabId = savedData.activeTabId;
@@ -127,12 +166,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
       // Set up message callback for this connection
       this.mqttClientService.setMessageCallback(tabId, (topic: string, message: string) => {
-        this.handleIncomingMessage(topic, message);
+        this.handleIncomingMessage(tabId, topic, message);
+      });
+
+      // Set up connection status callback
+      this.mqttClientService.setConnectionStatusCallback(tabId, (connected: boolean) => {
+        const tab = this.tabs.find(t => t.id === tabId);
+        if (tab) {
+          tab.connected = connected;
+
+          // Resubscribe to all topics when reconnected
+          if (connected) {
+            this.resubscribeAllTopics(tabId);
+          }
+
+          this.debounceSave();
+        }
       });
 
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
         tab.connected = true;
+
+        // Subscribe to all existing subscriptions
+        await this.resubscribeAllTopics(tabId);
       }
     } catch (error) {
       const tab = this.tabs.find(t => t.id === tabId);
@@ -143,13 +200,43 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  private handleIncomingMessage(topic: string, message: string): void {
-    console.log('Received message on topic:', topic, 'message:', message);
+  private async resubscribeAllTopics(tabId: number): Promise<void> {
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab || !tab.connected) {
+      return;
+    }
 
-    if (!this.currentTab) return;
+    console.log(`Resubscribing to all topics for tab ${tabId}...`);
+
+    for (const subscription of tab.subscriptions) {
+      try {
+        await this.mqttClientService.subscribe(tabId, subscription.topic, 0);
+        subscription.subscribed = true;
+        console.log(`Resubscribed to: ${subscription.topic}`);
+      } catch (error) {
+        console.error(`Failed to resubscribe to ${subscription.topic}:`, error);
+        subscription.subscribed = false;
+      }
+    }
+
+    this.debounceSave();
+  }
+
+  private handleIncomingMessage(tabId: number, topic: string, message: string): void {
+    console.log(`Received message for tab ${tabId} on topic:`, topic, 'message:', message);
+
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (!tab) {
+      console.warn(`Tab ${tabId} not found for incoming message`);
+      return;
+    }
 
     // Find matching subscriptions (support wildcards)
-    const matchingSubs = this.currentTab.subscriptions.filter(sub => this.topicMatches(sub.topic, topic));
+    const matchingSubs = tab.subscriptions.filter(sub => this.topicMatches(sub.topic, topic));
+
+    if (matchingSubs.length === 0) {
+      console.log(`No matching subscriptions found for topic: ${topic}`);
+    }
 
     matchingSubs.forEach(sub => {
       const newMessage = {
@@ -159,6 +246,7 @@ export class AppComponent implements OnInit, OnDestroy {
       sub.messages.push(newMessage);
       sub.messageCount = sub.messages.length;
       sub.lastMessage = message.substring(0, 50); // Preview first 50 chars
+      console.log(`Message added to subscription: ${sub.topic}`);
     });
 
     // Save updated subscriptions
@@ -178,7 +266,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return regex.test(topic);
   }
 
-  private saveDataToStorage(): void {
+  private async saveDataToStorage(): Promise<void> {
     const data = {
       tabs: this.tabs,
       activeTabId: this.activeTabId,
@@ -186,7 +274,7 @@ export class AppComponent implements OnInit, OnDestroy {
       leftPanelWidth: this.leftPanelWidth,
       subscribeAreaHeight: this.subscribeAreaHeight
     };
-    this.localStorageService.saveData(data);
+    await this.localStorageService.saveData(data);
   }
 
   private debounceSave(): void {
@@ -319,6 +407,7 @@ export class AppComponent implements OnInit, OnDestroy {
       name: '',
       host: 'localhost',
       port: 1883,
+      path: '',
       protocol: 'mqtt',
       clientId: 'mqtt_' + Math.random().toString(16).substring(2, 10),
       username: '',
@@ -388,7 +477,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   saveConfig(): void {
     if (!this.mqttConfig.name.trim()) {
-      alert('Please enter a client name');
+      this.showToast('warning', 'Missing Client Name', 'Please enter a client name');
       return;
     }
 
@@ -426,7 +515,7 @@ export class AppComponent implements OnInit, OnDestroy {
         })
         .catch(error => {
           console.error(`Failed to connect to ${newTab.label}:`, error);
-          alert(`Failed to connect: ${error.message || 'Unknown error'}`);
+          this.showToast('error', 'Connection Failed', error.message || 'Unknown error');
           this.debounceSave();
         });
     } else if (this.dialogMode === 'edit' && this.editingTabId !== null) {
@@ -450,7 +539,7 @@ export class AppComponent implements OnInit, OnDestroy {
           })
           .catch(error => {
             console.error(`Failed to reconnect to ${tab.label}:`, error);
-            alert(`Failed to reconnect: ${error.message || 'Unknown error'}`);
+            this.showToast('error', 'Reconnection Failed', error.message || 'Unknown error');
             this.debounceSave();
           });
       }
@@ -465,58 +554,131 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   // File selection methods for certificate paths
-  selectCaFile(): void {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.crt,.pem,.cer';
-    input.onchange = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        // In Electron, we can access the full path via webkitRelativePath or we need IPC
-        // For now, use the file name and user will need to enter full path manually
-        const reader = new FileReader();
-        reader.onload = () => {
-          // Store the file name, user should provide full path
-          this.mqttConfig.caFilePath = (file as any).path || file.name;
-        };
-        reader.readAsText(file);
+  async selectCaFile(): Promise<void> {
+    console.log('=== selectCaFile called ===');
+    console.log('isElectron:', this.isElectron);
+    console.log('window.electron:', (window as any).electron);
+    console.log('window.electron.dialog:', (window as any).electron?.dialog);
+
+    if (this.isElectron && (window as any).electron?.dialog) {
+      try {
+        console.log('Using Electron dialog...');
+        const result = await (window as any).electron.dialog.selectFile(
+          'Select CA Certificate',
+          [{ name: 'Certificates', extensions: ['crt', 'pem', 'cer', 'ca-bundle'] }]
+        );
+        console.log('Dialog result:', JSON.stringify(result));
+
+        if (result && result.success && result.filePath) {
+          this.ngZone.run(() => {
+            this.mqttConfig.caFilePath = result.filePath;
+            console.log('✅ CA file path set to:', result.filePath);
+            this.cdr.detectChanges();
+          });
+        } else if (result && result.canceled) {
+          console.log('User canceled file selection');
+        } else {
+          console.error('❌ Unexpected result:', result);
+        }
+      } catch (error) {
+        console.error('❌ Error in Electron dialog:', error);
+        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
       }
-    };
-    input.click();
+    } else {
+      console.log('⚠️ Using fallback HTML input (not Electron mode or dialog not available)');
+      // Fallback for web mode
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.crt,.pem,.cer';
+      input.onchange = (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          this.mqttConfig.caFilePath = file.name;
+          console.log('File selected (web mode):', file.name);
+        }
+      };
+      input.click();
+    }
   }
 
-  selectClientCertFile(): void {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.crt,.pem,.cer';
-    input.onchange = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          this.mqttConfig.clientCertPath = (file as any).path || file.name;
-        };
-        reader.readAsText(file);
+  async selectClientCertFile(): Promise<void> {
+    console.log('=== selectClientCertFile called ===');
+    if (this.isElectron && (window as any).electron?.dialog) {
+      try {
+        console.log('Using Electron dialog...');
+        const result = await (window as any).electron.dialog.selectFile(
+          'Select Client Certificate',
+          [{ name: 'Certificates', extensions: ['crt', 'pem', 'cer'] }]
+        );
+        console.log('Dialog result:', JSON.stringify(result));
+
+        if (result && result.success && result.filePath) {
+          this.ngZone.run(() => {
+            this.mqttConfig.clientCertPath = result.filePath;
+            console.log('✅ Client cert path set to:', result.filePath);
+            this.cdr.detectChanges();
+          });
+        } else if (result && result.canceled) {
+          console.log('User canceled file selection');
+        }
+      } catch (error) {
+        console.error('❌ Error in Electron dialog:', error);
+        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
       }
-    };
-    input.click();
+    } else {
+      console.log('⚠️ Using fallback HTML input');
+      // Fallback for web mode
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.crt,.pem,.cer';
+      input.onchange = (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          this.mqttConfig.clientCertPath = file.name;
+        }
+      };
+      input.click();
+    }
   }
 
-  selectClientKeyFile(): void {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.key,.pem';
-    input.onchange = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          this.mqttConfig.clientKeyPath = (file as any).path || file.name;
-        };
-        reader.readAsText(file);
+  async selectClientKeyFile(): Promise<void> {
+    console.log('=== selectClientKeyFile called ===');
+    if (this.isElectron && (window as any).electron?.dialog) {
+      try {
+        console.log('Using Electron dialog...');
+        const result = await (window as any).electron.dialog.selectFile(
+          'Select Client Key',
+          [{ name: 'Key Files', extensions: ['key', 'pem'] }]
+        );
+        console.log('Dialog result:', JSON.stringify(result));
+
+        if (result && result.success && result.filePath) {
+          this.ngZone.run(() => {
+            this.mqttConfig.clientKeyPath = result.filePath;
+            console.log('✅ Client key path set to:', result.filePath);
+            this.cdr.detectChanges();
+          });
+        } else if (result && result.canceled) {
+          console.log('User canceled file selection');
+        }
+      } catch (error) {
+        console.error('❌ Error in Electron dialog:', error);
+        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
       }
-    };
-    input.click();
+    } else {
+      console.log('⚠️ Using fallback HTML input');
+      // Fallback for web mode
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.key,.pem';
+      input.onchange = (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          this.mqttConfig.clientKeyPath = file.name;
+        }
+      };
+      input.click();
+    }
   }
 
   // Send topics methods
@@ -526,7 +688,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   addSendTopic(): void {
     if (!this.currentTab) {
-      alert('Please create a MQTT connection first');
+      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
       return;
     }
 
@@ -605,10 +767,40 @@ export class AppComponent implements OnInit, OnDestroy {
     this.sendTopics.splice(dropIndex, 0, draggedTopic);
   }
 
+  // Copy topic to clipboard
+  copyTopicToClipboard(topicName: string): void {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(topicName)
+        .then(() => {
+          this.showToast('success', 'Copied!', `Topic "${topicName}" copied to clipboard`);
+        })
+        .catch(err => {
+          console.error('Failed to copy to clipboard:', err);
+          this.showToast('error', 'Copy Failed', 'Could not copy to clipboard');
+        });
+    } else {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = topicName;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        this.showToast('success', 'Copied!', `Topic "${topicName}" copied to clipboard`);
+      } catch (err) {
+        console.error('Failed to copy to clipboard:', err);
+        this.showToast('error', 'Copy Failed', 'Could not copy to clipboard');
+      }
+      document.body.removeChild(textArea);
+    }
+  }
+
   // Subscription methods
   addSubscription(): void {
     if (!this.currentTab) {
-      alert('Please create a MQTT connection first');
+      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
       return;
     }
 
@@ -618,14 +810,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   saveSubscription(): void {
     if (!this.newSubscriptionTopic.trim()) {
-      alert('Please enter a topic');
+      this.showToast('warning', 'Missing Topic', 'Please enter a topic');
       return;
     }
 
     // Check if current tab is connected
     const currentTab = this.tabs.find(t => t.id === this.activeTabId);
     if (!currentTab || !currentTab.connected) {
-      alert('Please connect to MQTT broker first');
+      this.showToast('warning', 'Not Connected', 'Please connect to MQTT broker first');
       return;
     }
 
@@ -648,7 +840,7 @@ export class AppComponent implements OnInit, OnDestroy {
       })
       .catch(error => {
         console.error('Failed to subscribe:', error);
-        alert(`Failed to subscribe: ${error.message || 'Unknown error'}`);
+        this.showToast('error', 'Subscription Failed', error.message || 'Unknown error');
         // Remove subscription if failed
         const index = currentTab.subscriptions.findIndex(s => s.id === newSub.id);
         if (index > -1) {
@@ -765,7 +957,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // Message Editor methods
   addMessageEditor(): void {
     if (!this.currentTab) {
-      alert('Please create a MQTT connection first');
+      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
       return;
     }
 
@@ -788,7 +980,7 @@ export class AppComponent implements OnInit, OnDestroy {
       editor.message = JSON.stringify(parsed, null, 2);
       this.debounceSave();
     } catch (error) {
-      alert('Invalid JSON format. Cannot format the message.');
+      this.showToast('error', 'Invalid JSON', 'Cannot format the message. Please check the JSON syntax.');
     }
   }
 
@@ -808,7 +1000,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.currentTab) return;
 
     if (!this.messageEditorNameInput.trim()) {
-      alert('Please enter a name');
+      this.showToast('warning', 'Missing Name', 'Please enter a name');
       return;
     }
 
@@ -845,7 +1037,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.currentTab) return;
 
     if (this.currentTab.messageEditors.length <= 1) {
-      alert('At least one message editor is required');
+      this.showToast('warning', 'Cannot Delete', 'At least one message editor is required');
       return;
     }
 
@@ -898,13 +1090,19 @@ export class AppComponent implements OnInit, OnDestroy {
 
     const selectedTopic = this.currentTab.sendTopics.find(t => t.id === this.currentTab!.selectedSendTopicId);
     if (!selectedTopic) {
-      alert('Please select a topic from the left panel');
+      this.showToast('warning', 'No Topic Selected', 'Please select a topic from the left panel');
       return;
     }
 
     // Check if current tab is connected
     if (!this.currentTab.connected) {
-      alert('Please connect to MQTT broker first');
+      this.showToast('warning', 'Not Connected', 'Please connect to MQTT broker first');
+      return;
+    }
+
+    // Check if message is empty
+    if (!selectedEditor.message || selectedEditor.message.trim() === '') {
+      this.showToast('warning', 'Empty Message', 'Please enter a message to send');
       return;
     }
 
@@ -922,10 +1120,12 @@ export class AppComponent implements OnInit, OnDestroy {
         retain: selectedEditor.retain,
         message: selectedEditor.message
       });
-      // Optionally show success feedback
+
+      // Show success notification
+      this.showToast('success', 'Message Sent', `Successfully published to ${selectedTopic.name}`);
     }).catch(error => {
       console.error('Failed to send message:', error);
-      alert(`Failed to send message: ${error.message || 'Unknown error'}`);
+      this.showToast('error', 'Send Failed', error.message || 'Unknown error');
     });
   }
 

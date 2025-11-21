@@ -1,8 +1,9 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { ipcRenderer } from 'electron';
 
-// Expose protected methods that allow the renderer process to use
-// the ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('electron', {
+// When contextIsolation is false, we can directly set properties on window
+// instead of using contextBridge
+(window as any).electron = {
+  isElectron: true,
   // Example: send message to main process
   send: (channel: string, data: any) => {
     const validChannels = ['toMain'];
@@ -17,4 +18,15 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on(channel, (event, ...args) => func(...args));
     }
   },
-});
+  // File system operations
+  fs: {
+    saveData: (data: string) => ipcRenderer.invoke('fs:saveData', data),
+    loadData: () => ipcRenderer.invoke('fs:loadData'),
+  },
+  // File dialog
+  dialog: {
+    selectFile: (title: string, filters: any[]) => ipcRenderer.invoke('dialog:selectFile', title, filters),
+  }
+};
+
+console.log('Preload script loaded, window.electron:', (window as any).electron);
