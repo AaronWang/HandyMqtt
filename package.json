@@ -1,6 +1,6 @@
 {
   "name": "handymqtt-app",
-  "version": "1.0.0",
+  "version": "v0.0.1",
   "description": "A lightweight MQTT client for developers",
   "author": "Aaron Wang <wrq3530@gmail.com>",
   "main": "dist-electron/main.js",
