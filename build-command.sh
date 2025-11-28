@@ -2,8 +2,8 @@ npx ng build # Build Angular app
 npx tsc -p tsconfig.electron.json # Compile Electron main process code
 # build the Electron app for multiple platforms
 # 1. Build for macOS (x86_64)
-npx electron-builder --mac --dir # Package the app , default is x86_64
-npx electron-builder --mac dmg zip # Create DMG and ZIP installers for macOS x86_64
+npx electron-builder --mac --x64 --dir # Package the app , default is x86_64
+npx electron-builder --mac dmg zip  --x64 # Create DMG and ZIP installers for macOS x86_64
 # 2. Build for macOS (ARM64)
 npx electron-builder --mac --arm64 --dir  # Package the app
 npx electron-builder --mac dmg zip --arm64  # Create macOS ARM64 build
