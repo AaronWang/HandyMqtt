@@ -1,34 +1,17 @@
 <!-- MQTT Client Main Interface -->
 
 <div class="mqtt-container">
-  <!-- Header with Tabs and New Client Button -->
-  <div class="header">
-    <div class="tabs-container">
-      <div class="tab-list">
-        @for (tab of tabs; track tab.id) {
-          <div
-            class="tab"
-            [class.active]="tab.id === activeTabId"
-            (click)="selectTab(tab.id)">
-            <span class="connection-status" [class.connected]="tab.connected" [title]="tab.connected ? 'Connected' : 'Disconnected'">
-              ●
-            </span>
-            <span class="tab-label">{{ tab.label }}</span>
-            <button class="tab-edit" (click)="editTab($event, tab.id)" title="Edit">
-              ✎
-            </button>
-            <button class="tab-close" (click)="closeTab($event, tab.id)" title="Close">
-              ×
-            </button>
-          </div>
-        }
-      </div>
-      <button class="new-client-btn" (click)="createNewClient()">
-        <span class="btn-icon">+</span>
-        <span class="btn-text">New MQTT Client</span>
-      </button>
-    </div>
-  </div>
+  <!-- Connection Manager (Header, Tabs, Config Dialog) -->
+  <app-connection-manager
+    [tabs]="connectionTabs"
+    [activeTabId]="activeTabId"
+    [isElectron]="isElectron"
+    [nextTabId]="nextTabId"
+    (tabSelected)="onTabSelected($event)"
+    (tabCloseRequested)="onTabCloseRequested($event)"
+    (tabsUpdated)="onTabsUpdated($event)"
+    (configSaved)="onConfigSaved($event)">
+  </app-connection-manager>
 
   <!-- Main Content Area -->
   <div class="content-area">
@@ -36,33 +19,14 @@
     <div class="top-row" [style.height.%]="subscribeAreaHeight">
       <!-- Left Panel: Send to Topic -->
       <div class="left-panel" [style.width.%]="leftPanelWidth">
-        <div class="panel-header">
-          <h3>Send to Topic</h3>
-          <button class="add-btn" (click)="addSendTopic()" [disabled]="!currentTab" [title]="currentTab ? 'Add Topic' : 'Please create a connection first'">+</button>
-        </div>
-        <div class="panel-content topic-panel-content">
-          <div class="topic-list">
-            @for (topic of sendTopics; track topic.id; let i = $index) {
-              <div class="topic-item"
-                   [class.selected]="topic.id === selectedSendTopicId"
-                   [class.dragging]="draggedTopicId === topic.id"
-                   (click)="selectSendTopic(topic.id)"
-                   (dblclick)="copyTopicToClipboard(topic.name)"
-                   draggable="true"
-                   (dragstart)="onDragStart($event, topic.id)"
-                   (dragend)="onDragEnd($event)"
-                   (dragover)="onDragOver($event)"
-                   (drop)="onDrop($event, i)">
-                <span class="radio-icon" [class.checked]="topic.id === selectedSendTopicId" title="Select as active topic">
-                  {{ topic.id === selectedSendTopicId ? '◉' : '○' }}
-                </span>
-                <span class="topic-icon">📤</span>
-                <span class="topic-name" title="Double click to copy">{{ topic.name }}</span>
-                <button class="topic-delete" (click)="deleteSendTopic($event, topic.id)" title="Delete">×</button>
-              </div>
-            }
-          </div>
-        </div>
+        <app-send-topic-list
+          [topics]="sendTopics"
+          [selectedTopicId]="selectedSendTopicId"
+          [isDisabled]="!currentTab"
+          [nextTopicId]="currentTab?.nextTopicId || 1"
+          (topicSelected)="onSendTopicSelected($event)"
+          (topicsUpdated)="onSendTopicsUpdated($event)">
+        </app-send-topic-list>
       </div>
 
       <!-- Resize Handle -->
@@ -71,51 +35,15 @@
 
       <!-- Right Panel: Subscribe Topics -->
       <div class="subscribe-area">
-        <div class="panel-header">
-          <h3>Subscribe Topics</h3>
-          <button class="add-btn" (click)="addSubscription()" [disabled]="!currentTab" [title]="currentTab ? 'Add Subscription' : 'Please create a connection first'">+</button>
-        </div>
-        <div class="panel-content">
-          <div class="subscribe-list-horizontal">
-            @for (subscription of subscriptions; track subscription.id; let i = $index) {
-              <div class="subscription-card"
-                   [class.dragging]="draggedSubscriptionId === subscription.id"
-                   draggable="true"
-                   (dragstart)="onSubscriptionDragStart($event, subscription.id)"
-                   (dragend)="onSubscriptionDragEnd($event)"
-                   (dragover)="onSubscriptionDragOver($event)"
-                   (drop)="onSubscriptionDrop($event, i)">
-                <div class="subscription-card-header">
-                  <div class="subscription-title">
-                    <span class="subscribe-status-icon"
-                          [class.subscribed]="subscription.subscribed && currentTab?.connected"
-                          [class.failed]="!subscription.subscribed || !currentTab?.connected">
-                      {{ (subscription.subscribed && currentTab?.connected) ? '✓' : '✗' }}
-                    </span>
-                    <span class="topic-name">{{ subscription.topic }}</span>
-                    <span class="message-count">{{ subscription.messageCount }}</span>
-                  </div>
-                  <div class="subscription-actions">
-                    <button class="subscription-clean" (click)="clearSubscriptionMessages($event, subscription.id)" title="Clear Messages">🗑️</button>
-                    <button class="subscription-delete" (click)="deleteSubscription($event, subscription.id)" title="Unsubscribe">×</button>
-                  </div>
-                </div>
-                <div class="subscription-card-content">
-                  @if (subscription.messages.length > 0) {
-                    @for (msg of subscription.messages; track msg.timestamp) {
-                      <div class="message-item">
-                        <div class="message-timestamp">{{ msg.timestamp | date:'HH:mm:ss' }}</div>
-                        <pre class="message-payload" [class.json-payload]="isJsonMessage(msg.payload)">{{ formatMessage(msg.payload) }}</pre>
-                      </div>
-                    }
-                  } @else {
-                    <div class="no-messages">No messages received yet</div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </div>
+        <app-subscribe-topics
+          [subscriptions]="subscriptions"
+          [isConnected]="currentTab?.connected || false"
+          [isDisabled]="!currentTab"
+          (subscriptionAdded)="onSubscriptionAdded()"
+          (subscriptionDeleted)="onSubscriptionDeleted($event)"
+          (subscriptionMessagesCleared)="onSubscriptionMessagesCleared($event)"
+          (subscriptionsReordered)="onSubscriptionsReordered($event)">
+        </app-subscribe-topics>
       </div>
     </div>
 
@@ -125,240 +53,22 @@
 
     <!-- Bottom Row: Message Editor (Full Width) -->
     <div class="message-editor-area">
-        <div class="panel-header">
-          <h3>Message Editor</h3>
-          <button class="add-btn" (click)="addMessageEditor()" [disabled]="!currentTab" [title]="currentTab ? 'Add Message Editor' : 'Please create a connection first'">+</button>
-        </div>
-        <div class="panel-content">
-          <div class="message-editor-list-horizontal">
-            @for (editor of messageEditors; track editor.id; let i = $index) {
-              <div class="message-editor-card"
-                   [class.selected]="editor.id === selectedMessageEditorId"
-                   [class.dragging]="draggedMessageEditorId === editor.id"
-                   draggable="true"
-                   (click)="selectMessageEditor(editor.id)"
-                   (dragstart)="onMessageEditorDragStart($event, editor.id)"
-                   (dragend)="onMessageEditorDragEnd($event)"
-                   (dragover)="onMessageEditorDragOver($event)"
-                   (drop)="onMessageEditorDrop($event, i)">
-                <div class="message-editor-card-header">
-                  <div class="message-editor-title">
-                    <span class="editor-icon">✉️</span>
-                    <span class="editor-label">{{ editor.name }}</span>
-                    <button class="editor-format-json" (click)="formatJsonInEditor($event, editor.id)" title="Format JSON">{{ '{' }} {{ '}' }}</button>
-                    <button class="editor-edit" (click)="openMessageEditorNameDialog($event, editor.id)" title="Edit Name">✏️</button>
-                  </div>
-                  <button class="editor-delete" (click)="deleteMessageEditor($event, editor.id)" title="Delete">×</button>
-                </div>
-                <div class="message-editor-card-content">
-                  <div class="editor-controls">
-                    <div class="control-row">
-                      <label>
-                        QoS:
-                        <select [(ngModel)]="editor.qos" (ngModelChange)="onDataChange()">
-                          <option [value]="0">0</option>
-                          <option [value]="1">1</option>
-                          <option [value]="2">2</option>
-                        </select>
-                      </label>
-                      <label class="retain-checkbox">
-                        <input type="checkbox" [(ngModel)]="editor.retain" (ngModelChange)="onDataChange()" />
-                        Retain
-                      </label>
-                    </div>
-                  </div>
-                  <textarea
-                    class="message-input"
-                    [(ngModel)]="editor.message"
-                    (ngModelChange)="onDataChange()"
-                    placeholder="Enter message payload..."></textarea>
-                  @if (editor.id === selectedMessageEditorId) {
-                    <button class="send-btn-card" (click)="sendMessage()">Send</button>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-      </div>
+      <app-message-editor
+        [editors]="messageEditors"
+        [selectedEditorId]="selectedMessageEditorId"
+        [isDisabled]="!currentTab"
+        (editorAdded)="onMessageEditorAdded()"
+        (editorSelected)="onMessageEditorSelected($event)"
+        (editorDeleted)="onMessageEditorDeleted($event)"
+        (editorNameEditRequested)="onMessageEditorNameEditRequested($event)"
+        (editorJsonFormatted)="onMessageEditorJsonFormatted($event)"
+        (editorsReordered)="onMessageEditorsReordered($event)"
+        (messageSent)="onMessageSent()"
+        (editorDataChanged)="onDataChange()">
+      </app-message-editor>
     </div>
   </div>
-
-<!-- MQTT Configuration Dialog -->
-@if (showConfigDialog) {
-  <div class="dialog-overlay" (click)="closeConfigDialog()">
-    <div class="dialog-container" (click)="$event.stopPropagation()">
-      <div class="dialog-header">
-        <h2>{{ dialogMode === 'create' ? 'New MQTT Client' : 'Edit MQTT Client' }}</h2>
-        <button class="dialog-close" (click)="closeConfigDialog()">&times;</button>
-      </div>
-
-      <!-- Tab Navigation -->
-      <div class="dialog-tabs">
-        <button
-          class="dialog-tab"
-          [class.active]="configDialogTab === 'general'"
-          (click)="switchConfigTab('general')">
-          General
-        </button>
-        <button
-          class="dialog-tab"
-          [class.active]="configDialogTab === 'advanced'"
-          (click)="switchConfigTab('advanced')">
-          Advanced
-        </button>
-      </div>
-
-      <div class="dialog-content">
-        <!-- General Tab -->
-        @if (configDialogTab === 'general') {
-          <form class="mqtt-form">
-            <div class="form-group">
-              <label>Client Name *</label>
-              <input type="text" [(ngModel)]="mqttConfig.name" name="name" placeholder="My MQTT Client" required />
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Host *</label>
-                <input type="text" [(ngModel)]="mqttConfig.host" name="host" placeholder="localhost or broker.example.com" required />
-              </div>
-              <div class="form-group">
-                <label>Port *</label>
-                <input type="number" [(ngModel)]="mqttConfig.port" name="port" placeholder="1883" required />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Protocol</label>
-                <select [(ngModel)]="mqttConfig.protocol" name="protocol">
-                  <option value="mqtt" [disabled]="!isElectron">mqtt://{{ isElectron ? '' : ' (Desktop only)' }}</option>
-                  <option value="mqtts" [disabled]="!isElectron">mqtts://{{ isElectron ? '' : ' (Desktop only)' }}</option>
-                  <option value="ws">ws://</option>
-                  <option value="wss">wss://</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Client ID</label>
-                <input type="text" [(ngModel)]="mqttConfig.clientId" name="clientId" placeholder="Auto-generated" />
-              </div>
-            </div>
-
-            @if (mqttConfig.protocol === 'ws' || mqttConfig.protocol === 'wss') {
-              <div class="form-group">
-                <label>Path</label>
-                <input type="text" [(ngModel)]="mqttConfig.path" name="path" placeholder="/mqtt (optional)" />
-                <small class="form-hint">WebSocket path, e.g., /mqtt or /ws</small>
-              </div>
-            }
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Username</label>
-                <input type="text" [(ngModel)]="mqttConfig.username" name="username" placeholder="Optional" />
-              </div>
-              <div class="form-group">
-                <label>Password</label>
-                <input type="password" [(ngModel)]="mqttConfig.password" name="password" placeholder="Optional" />
-              </div>
-            </div>
-
-            <div class="form-group checkbox-group">
-              <label>
-                <input type="checkbox" [(ngModel)]="mqttConfig.useSSL" name="useSSL" />
-                Use SSL/TLS
-              </label>
-            </div>
-
-            <!-- Certificate Authentication Section (Only for mqtt/mqtts protocols) -->
-            @if (mqttConfig.protocol === 'mqtt' || mqttConfig.protocol === 'mqtts') {
-              <div class="form-section">
-                <h3 class="section-title">Certificate Authentication (Self-Signed)</h3>
-
-                <div class="form-group checkbox-group">
-                  <label>
-                    <input type="checkbox" [(ngModel)]="mqttConfig.useCertificateAuth" name="useCertificateAuth" />
-                    Use Certificate Authentication
-                  </label>
-                </div>
-
-                @if (mqttConfig.useCertificateAuth) {
-                  <div class="form-group">
-                    <label>CA Certificate File</label>
-                    <div class="input-with-button">
-                      <input type="text" [(ngModel)]="mqttConfig.caFilePath" name="caFilePath" placeholder="/path/to/ca.crt" />
-                      <button type="button" class="file-select-btn" (click)="selectCaFile()" title="Browse">📁</button>
-                    </div>
-                    <small class="form-hint">Root CA certificate file path</small>
-                  </div>
-
-                  <div class="form-group">
-                    <label>Client Certificate File</label>
-                    <div class="input-with-button">
-                      <input type="text" [(ngModel)]="mqttConfig.clientCertPath" name="clientCertPath" placeholder="/path/to/client.crt" />
-                      <button type="button" class="file-select-btn" (click)="selectClientCertFile()" title="Browse">📁</button>
-                    </div>
-                    <small class="form-hint">Client certificate file path</small>
-                  </div>
-
-                  <div class="form-group">
-                    <label>Client Key File</label>
-                    <div class="input-with-button">
-                      <input type="text" [(ngModel)]="mqttConfig.clientKeyPath" name="clientKeyPath" placeholder="/path/to/client.key" />
-                      <button type="button" class="file-select-btn" (click)="selectClientKeyFile()" title="Browse">📁</button>
-                    </div>
-                    <small class="form-hint">Client private key file path</small>
-                  </div>
-                }
-              </div>
-            }
-          </form>
-        }
-
-        <!-- Advanced Tab -->
-        @if (configDialogTab === 'advanced') {
-          <form class="mqtt-form">
-            <div class="form-row">
-              <div class="form-group">
-                <label>Connect Timeout (seconds)</label>
-                <input type="number" [(ngModel)]="mqttConfig.connectTimeout" name="connectTimeout" placeholder="30" min="1" max="300" />
-              </div>
-              <div class="form-group">
-                <label>Keep Alive (seconds)</label>
-                <input type="number" [(ngModel)]="mqttConfig.keepAlive" name="keepAlive" placeholder="60" min="0" max="65535" />
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label>MQTT Version</label>
-              <select [(ngModel)]="mqttConfig.mqttVersion" name="mqttVersion">
-                <option value="3.1.1">MQTT 3.1.1</option>
-                <option value="5.0">MQTT 5.0</option>
-              </select>
-            </div>
-
-            <div class="form-group checkbox-group">
-              <label>
-                <input type="checkbox" [(ngModel)]="mqttConfig.cleanSession" name="cleanSession" />
-                Clean Session
-              </label>
-              <label>
-                <input type="checkbox" [(ngModel)]="mqttConfig.autoReconnect" name="autoReconnect" />
-                Auto Reconnect
-              </label>
-            </div>
-          </form>
-        }
-      </div>
-
-      <div class="dialog-footer">
-        <button class="btn-secondary" (click)="closeConfigDialog()">Cancel</button>
-        <button class="btn-primary" (click)="saveConfig()">{{ dialogMode === 'create' ? 'Create' : 'Save' }}</button>
-      </div>
-    </div>
-  </div>
-}
+</div>
 
 <!-- Subscription Dialog -->
 @if (showSubscriptionDialog) {
@@ -403,30 +113,6 @@
       <div class="dialog-footer">
         <button class="btn-secondary" (click)="closeMessageEditorNameDialog()">Cancel</button>
         <button class="btn-primary" (click)="saveMessageEditorName()">{{ editingMessageEditorId === null ? 'Create' : 'Save' }}</button>
-      </div>
-    </div>
-  </div>
-}
-
-<!-- Add Topic Dialog -->
-@if (showAddTopicDialog) {
-  <div class="dialog-overlay" (click)="closeAddTopicDialog()">
-    <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
-      <div class="dialog-header">
-        <h2>Add Topic</h2>
-        <button class="dialog-close" (click)="closeAddTopicDialog()">&times;</button>
-      </div>
-      <div class="dialog-content">
-        <form class="mqtt-form">
-          <div class="form-group">
-            <label>Topic Name *</label>
-            <input type="text" [(ngModel)]="newTopicName" name="topicName" placeholder="e.g., home/temperature" required autofocus />
-          </div>
-        </form>
-      </div>
-      <div class="dialog-footer">
-        <button class="btn-secondary" (click)="closeAddTopicDialog()">Cancel</button>
-        <button class="btn-primary" (click)="saveNewTopic()">Add</button>
       </div>
     </div>
   </div>

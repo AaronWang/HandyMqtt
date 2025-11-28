@@ -1,0 +1,59 @@
+<div class="panel-header">
+  <h3>Message Editor</h3>
+  <button class="add-btn" (click)="addEditor()" [disabled]="isDisabled" [title]="isDisabled ? 'Please create a connection first' : 'Add Message Editor'">+</button>
+</div>
+<div class="panel-content">
+  <div class="message-editor-list-horizontal">
+    @for (editor of editors; track editor.id; let i = $index) {
+      <div class="message-editor-card"
+           [class.selected]="editor.id === selectedEditorId"
+           [class.dragging]="draggedEditorId === editor.id"
+           [style.width.px]="editor.width || 350"
+           (click)="selectEditor(editor.id)">
+        <div class="message-editor-card-header"
+             draggable="true"
+             (dragstart)="onDragStart($event, editor.id)"
+             (dragend)="onDragEnd($event)"
+             (dragover)="onDragOver($event)"
+             (drop)="onDrop($event, i)">
+          <div class="message-editor-title">
+            <span class="editor-icon">✉️</span>
+            <span class="editor-label">{{ editor.name }}</span>
+            <button class="editor-format-json" (click)="formatJson($event, editor.id)" title="Format JSON">{{ '{' }} {{ '}' }}</button>
+            <button class="editor-edit" (click)="editEditorName($event, editor.id)" title="Edit Name">✏️</button>
+          </div>
+          <button class="editor-delete" (click)="deleteEditor($event, editor.id)" title="Delete">×</button>
+        </div>
+        <div class="message-editor-card-content">
+          <div class="editor-controls">
+            <div class="control-row">
+              <label>
+                QoS:
+                <select [(ngModel)]="editor.qos" (ngModelChange)="onDataChange()">
+                  <option [value]="0">0</option>
+                  <option [value]="1">1</option>
+                  <option [value]="2">2</option>
+                </select>
+              </label>
+              <label class="retain-checkbox">
+                <input type="checkbox" [(ngModel)]="editor.retain" (ngModelChange)="onDataChange()" />
+                Retain
+              </label>
+            </div>
+          </div>
+          <textarea
+            class="message-input"
+            [(ngModel)]="editor.message"
+            (ngModelChange)="onDataChange()"
+            placeholder="Enter message payload..."></textarea>
+          @if (editor.id === selectedEditorId) {
+            <button class="send-btn-card" (click)="sendMessage()">Send</button>
+          }
+        </div>
+        <div class="resize-handle-vertical" 
+             (mousedown)="startResize($event, editor.id)"
+             title="Drag to resize"></div>
+      </div>
+    }
+  </div>
+</div>

@@ -1,159 +1,132 @@
 :host {
   display: block;
-  height: 100vh;
-  overflow: hidden;
 }
 
-.mqtt-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  background-color: #ffffff;
-  color: #333333;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-}
-
-// Content Area
-.content-area {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-
-// Top Row (Send to Topic and Subscribe Topics)
-.top-row {
-  display: flex;
+// Header with Tabs
+.header {
+  background-color: #f3f3f3;
   border-bottom: 1px solid #e0e0e0;
-  overflow: hidden;
+  padding: 8px 12px;
 }
 
-// Left Panel
-.left-panel {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #e0e0e0;
-  background-color: #f9f9f9;
-  min-width: 150px;
-  max-width: 400px;
-}
-
-// Panel Common Styles (shared by subscribe and message editor areas)
-.panel-header {
+.tabs-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
+  gap: 16px;
+}
+
+.tab-list {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
   background-color: #e8e8e8;
-  border-bottom: 1px solid #d0d0d0;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
 
-  h3 {
-    margin: 0;
+  &:hover {
+    background-color: #d8d8d8;
+  }
+
+  &.active {
+    background-color: #ffffff;
+    border-color: #007acc;
+  }
+
+  .tab-label {
     font-size: 13px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: #555555;
+    white-space: nowrap;
   }
 
-  .add-btn,
-  .send-btn {
-    background-color: #0e639c;
+  .connection-status {
+    font-size: 10px;
+    line-height: 1;
+    color: #dc3545;
+    transition: color 0.3s;
+
+    &.connected {
+      color: #28a745;
+    }
+  }
+
+  .tab-edit {
+    background: none;
     border: none;
-    border-radius: 3px;
-    color: white;
-    padding: 4px 12px;
-    font-size: 12px;
+    color: #666666;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
 
     &:hover {
-      background-color: #1177bb;
+      color: #007acc;
+      background-color: rgba(0, 122, 204, 0.1);
+      border-radius: 2px;
     }
   }
 
-  .add-btn {
+  &:hover .tab-edit {
+    opacity: 1;
+  }
+
+  .tab-close {
+    background: none;
+    border: none;
+    color: #666666;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      color: #333333;
+      background-color: rgba(0, 0, 0, 0.1);
+      border-radius: 2px;
+    }
+  }
+}
+
+.new-client-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #0e639c;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: #1177bb;
+  }
+
+  .btn-icon {
     font-size: 16px;
-    padding: 2px 8px;
-
-    &:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      background-color: #e0e0e0;
-
-      &:hover {
-        background-color: #e0e0e0;
-      }
-    }
-  }
-}
-
-.panel-content {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-
-  &::-webkit-scrollbar {
-    width: 10px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: #f5f5f5;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #c0c0c0;
-    border-radius: 5px;
-
-    &:hover {
-      background: #a0a0a0;
-    }
-  }
-}
-
-// Subscribe Area
-.subscribe-area {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-
-// subscribe-list and subscription-card styles moved to SubscribeTopicsComponent
-
-// subscription-item and subscription-card styles moved to SubscribeTopicsComponent
-
-// Message Editor Area (Full Width)
-.message-editor-area {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-  width: 100%;
-}
-
-// message-editor styles moved to MessageEditorComponent
-
-// Resize Handles
-.resize-handle {
-  width: 5px;
-  background-color: #e0e0e0;
-  cursor: ew-resize;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background-color: #007acc;
-  }
-}
-
-.resize-handle-horizontal {
-  height: 5px;
-  background-color: #e0e0e0;
-  cursor: ns-resize;
-  transition: background-color 0.2s;
-
-  &:hover {
-    background-color: #007acc;
+    font-weight: bold;
   }
 }
 

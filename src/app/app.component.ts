@@ -1,79 +1,47 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, NgZone, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { LocalStorageService } from './services/local-storage.service';
 import { MqttClientService } from './services/mqtt-client.service';
-import Swal from 'sweetalert2';
+import { SendTopicListComponent, Topic as SendTopic } from './components/send-topic-list/send-topic-list.component';
+import { SubscribeTopicsComponent, Subscription as SubscribeSubscription } from './components/subscribe-topics/subscribe-topics.component';
+import { MessageEditorComponent, MessageEditor as EditorMessage } from './components/message-editor/message-editor.component';
+import { ConnectionManagerComponent, MqttConfig as ConnectionMqttConfig, ConnectionTab } from './components/connection-manager/connection-manager.component';
+import { ToastUtil } from './utils/toast.util';
 
-interface MqttConfig {
-  name: string;
-  host: string;
-  port: number;
-  path: string;
-  protocol: 'ws' | 'wss' | 'mqtt' | 'mqtts';
-  clientId: string;
-  username: string;
-  password: string;
-  keepAlive: number;
-  cleanSession: boolean;
-  useSSL: boolean;
-  connectTimeout: number;
-  autoReconnect: boolean;
-  mqttVersion: '3.1.1' | '5.0';
-  useCertificateAuth: boolean;
-  caFilePath: string;
-  clientCertPath: string;
-  clientKeyPath: string;
-}
+// Use imported MqttConfig type with alias
+type MqttConfig = ConnectionMqttConfig;
 
 interface Tab {
   id: number;
   label: string;
   connected: boolean;
   config?: MqttConfig;
-  sendTopics: Topic[];
+  sendTopics: SendTopic[];
   selectedSendTopicId: number | null;
-  subscriptions: Subscription[];
-  messageEditors: MessageEditor[];
+  subscriptions: SubscribeSubscription[];
+  messageEditors: EditorMessage[];
   selectedMessageEditorId: number | null;
   nextTopicId: number;
   nextSubscriptionId: number;
   nextMessageEditorId: number;
 }
 
-interface Topic {
-  id: number;
-  name: string;
-}
-
-interface Subscription {
-  id: number;
-  topic: string;
-  messageCount: number;
-  lastMessage: string;
-  messages: Array<{ timestamp: Date, payload: string }>;
-  subscribed: boolean;
-}
-
-interface MessageEditor {
-  id: number;
-  name: string;
-  qos: number;
-  retain: boolean;
-  message: string;
-}
+// Remove duplicate interfaces - using imported types instead
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, FormsModule],
+  imports: [CommonModule, RouterOutlet, FormsModule, SendTopicListComponent, SubscribeTopicsComponent, MessageEditorComponent, ConnectionManagerComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
 export class AppComponent implements OnInit, OnDestroy {
   title = 'handymqtt-app';
   isElectron: boolean = false;
+
+  @ViewChild(ConnectionManagerComponent) connectionManager?: ConnectionManagerComponent;
 
   private saveTimeout: any;
 
@@ -111,26 +79,7 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Toast notification helper
-  private showToast(icon: 'success' | 'error' | 'warning' | 'info', title: string, text?: string): void {
-    const Toast = Swal.mixin({
-      toast: true,
-      position: 'top-end',
-      showConfirmButton: false,
-      timer: 3000,
-      timerProgressBar: true,
-      didOpen: (toast) => {
-        toast.addEventListener('mouseenter', Swal.stopTimer);
-        toast.addEventListener('mouseleave', Swal.resumeTimer);
-      }
-    });
 
-    Toast.fire({
-      icon,
-      title,
-      text
-    });
-  }
 
   private async loadDataFromStorage(): Promise<void> {
     const savedData = await this.localStorageService.loadData();
@@ -166,7 +115,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
       // Set up message callback for this connection
       this.mqttClientService.setMessageCallback(tabId, (topic: string, message: string) => {
-        this.handleIncomingMessage(tabId, topic, message);
+        // Use NgZone to ensure Angular change detection is triggered immediately
+        this.ngZone.run(() => {
+          this.handleIncomingMessage(tabId, topic, message);
+        });
       });
 
       // Set up connection status callback
@@ -292,16 +244,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   // Dialog
-  showConfigDialog = false;
-  configDialogTab: 'general' | 'advanced' = 'general';
-  dialogMode: 'create' | 'edit' = 'create';
-  editingTabId: number | null = null;
-  mqttConfig: MqttConfig = this.getDefaultConfig();
   showMessageEditorNameDialog = false;
   editingMessageEditorId: number | null = null;
   messageEditorNameInput = '';
-  showAddTopicDialog = false;
-  newTopicName = '';
   showConfirmDialog = false;
   confirmDialogTitle = '';
   confirmDialogMessage = '';
@@ -355,10 +300,7 @@ export class AppComponent implements OnInit, OnDestroy {
   leftPanelWidth = 20; // percentage
   subscribeAreaHeight = 60; // percentage
 
-  // Drag state
-  draggedTopicId: number | null = null;
-  draggedSubscriptionId: number | null = null;
-  draggedMessageEditorId: number | null = null;
+  // Drag state - moved to child components
 
   // Dialog state
   showSubscriptionDialog = false;
@@ -369,7 +311,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.tabs.find(t => t.id === this.activeTabId);
   }
 
-  get sendTopics(): Topic[] {
+  get sendTopics(): SendTopic[] {
     return this.currentTab?.sendTopics || [];
   }
 
@@ -383,11 +325,11 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  get subscriptions(): Subscription[] {
+  get subscriptions(): SubscribeSubscription[] {
     return this.currentTab?.subscriptions || [];
   }
 
-  get messageEditors(): MessageEditor[] {
+  get messageEditors(): EditorMessage[] {
     return this.currentTab?.messageEditors || [];
   }
 
@@ -401,406 +343,54 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Tab methods
-  getDefaultConfig(): MqttConfig {
-    return {
-      name: '',
-      host: 'localhost',
-      port: 1883,
-      path: '',
-      protocol: 'mqtt',
-      clientId: 'mqtt_' + Math.random().toString(16).substring(2, 10),
-      username: '',
-      password: '',
-      keepAlive: 60,
-      cleanSession: true,
-      useSSL: false,
-      connectTimeout: 30,
-      autoReconnect: true,
-      mqttVersion: '3.1.1',
-      useCertificateAuth: false,
-      caFilePath: '',
-      clientCertPath: '',
-      clientKeyPath: ''
-    };
+  get connectionTabs(): ConnectionTab[] {
+    return this.tabs.map(tab => ({
+      id: tab.id,
+      label: tab.label,
+      connected: tab.connected,
+      config: tab.config
+    }));
   }
+
+  // Tab methods
   selectTab(tabId: number): void {
     this.activeTabId = tabId;
   }
 
-  closeTab(event: Event, tabId: number): void {
-    event.stopPropagation();
-    const tab = this.tabs.find(t => t.id === tabId);
-    if (!tab) return;
+  closeTab(tabId: number): void {
+    const index = this.tabs.findIndex(t => t.id === tabId);
+    if (index > -1) {
+      // Disconnect MQTT client if connected
+      const tab = this.tabs[index];
+      if (tab.connected) {
+        this.mqttClientService.disconnect(tab.id);
+      }
 
-    this.showConfirm('Close Connection', `Are you sure you want to close "${tab.label}"?`, () => {
-      const index = this.tabs.findIndex(t => t.id === tabId);
-      if (index > -1) {
-        this.tabs.splice(index, 1);
-        if (this.activeTabId === tabId && this.tabs.length > 0) {
-          this.activeTabId = this.tabs[0].id;
-        }
+      this.tabs.splice(index, 1);
+      if (this.activeTabId === tabId && this.tabs.length > 0) {
+        this.activeTabId = this.tabs[0].id;
       }
       this.debounceSave();
-    });
-  }
-
-  createNewClient(): void {
-    this.dialogMode = 'create';
-    this.editingTabId = null;
-    this.mqttConfig = this.getDefaultConfig();
-    this.mqttConfig.name = `Client ${this.nextTabId}`;
-    this.configDialogTab = 'general';
-    this.showConfigDialog = true;
-  }
-
-  switchConfigTab(tab: 'general' | 'advanced'): void {
-    this.configDialogTab = tab;
-  }
-
-  editTab(event: Event, tabId: number): void {
-    event.stopPropagation();
-    const tab = this.tabs.find(t => t.id === tabId);
-    if (tab) {
-      this.dialogMode = 'edit';
-      this.editingTabId = tabId;
-      if (tab.config) {
-        this.mqttConfig = { ...tab.config };
-      } else {
-        this.mqttConfig = this.getDefaultConfig();
-        this.mqttConfig.name = tab.label;
-      }
-      this.configDialogTab = 'general';
-      this.showConfigDialog = true;
     }
   }
 
-  saveConfig(): void {
-    if (!this.mqttConfig.name.trim()) {
-      this.showToast('warning', 'Missing Client Name', 'Please enter a client name');
-      return;
-    }
-
-    if (this.dialogMode === 'create') {
-      const newTab: Tab = {
-        id: this.nextTabId++,
-        label: this.mqttConfig.name,
-        connected: false,
-        config: { ...this.mqttConfig },
-        sendTopics: [],
-        selectedSendTopicId: null,
-        subscriptions: [],
-        messageEditors: [
-          {
-            id: 1,
-            name: 'Message 1',
-            qos: 0,
-            retain: false,
-            message: ''
-          }
-        ],
-        selectedMessageEditorId: 1,
-        nextTopicId: 1,
-        nextSubscriptionId: 1,
-        nextMessageEditorId: 2
-      };
-      this.tabs.push(newTab);
-      this.activeTabId = newTab.id;
-
-      // Connect to MQTT broker immediately
-      this.connectToMqtt(newTab.id, newTab.config!)
-        .then(() => {
-          console.log(`Connected to ${newTab.label}`);
-          this.debounceSave();
-        })
-        .catch(error => {
-          console.error(`Failed to connect to ${newTab.label}:`, error);
-          this.showToast('error', 'Connection Failed', error.message || 'Unknown error');
-          this.debounceSave();
-        });
-    } else if (this.dialogMode === 'edit' && this.editingTabId !== null) {
-      const tab = this.tabs.find(t => t.id === this.editingTabId);
-      if (tab) {
-        const wasConnected = tab.connected;
-        tab.label = this.mqttConfig.name;
-        tab.config = { ...this.mqttConfig };
-
-        // If was connected, disconnect and reconnect with new config
-        if (wasConnected) {
-          this.mqttClientService.disconnect(tab.id);
-          tab.connected = false;
-        } else {
-          this.debounceSave();
-        }
-        this.connectToMqtt(tab.id, tab.config)
-          .then(() => {
-            console.log(`Reconnected to ${tab.label} with new config`);
-            this.debounceSave();
-          })
-          .catch(error => {
-            console.error(`Failed to reconnect to ${tab.label}:`, error);
-            this.showToast('error', 'Reconnection Failed', error.message || 'Unknown error');
-            this.debounceSave();
-          });
-      }
-    }
-
-    this.closeConfigDialog();
-  }
-
-  closeConfigDialog(): void {
-    this.showConfigDialog = false;
-    this.editingTabId = null;
-  }
-
-  // File selection methods for certificate paths
-  async selectCaFile(): Promise<void> {
-    console.log('=== selectCaFile called ===');
-    console.log('isElectron:', this.isElectron);
-    console.log('window.electron:', (window as any).electron);
-    console.log('window.electron.dialog:', (window as any).electron?.dialog);
-
-    if (this.isElectron && (window as any).electron?.dialog) {
-      try {
-        console.log('Using Electron dialog...');
-        const result = await (window as any).electron.dialog.selectFile(
-          'Select CA Certificate',
-          [{ name: 'Certificates', extensions: ['crt', 'pem', 'cer', 'ca-bundle'] }]
-        );
-        console.log('Dialog result:', JSON.stringify(result));
-
-        if (result && result.success && result.filePath) {
-          this.ngZone.run(() => {
-            this.mqttConfig.caFilePath = result.filePath;
-            console.log('✅ CA file path set to:', result.filePath);
-            this.cdr.detectChanges();
-          });
-        } else if (result && result.canceled) {
-          console.log('User canceled file selection');
-        } else {
-          console.error('❌ Unexpected result:', result);
-        }
-      } catch (error) {
-        console.error('❌ Error in Electron dialog:', error);
-        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
-      }
-    } else {
-      console.log('⚠️ Using fallback HTML input (not Electron mode or dialog not available)');
-      // Fallback for web mode
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.crt,.pem,.cer';
-      input.onchange = (e: Event) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          this.mqttConfig.caFilePath = file.name;
-          console.log('File selected (web mode):', file.name);
-        }
-      };
-      input.click();
-    }
-  }
-
-  async selectClientCertFile(): Promise<void> {
-    console.log('=== selectClientCertFile called ===');
-    if (this.isElectron && (window as any).electron?.dialog) {
-      try {
-        console.log('Using Electron dialog...');
-        const result = await (window as any).electron.dialog.selectFile(
-          'Select Client Certificate',
-          [{ name: 'Certificates', extensions: ['crt', 'pem', 'cer'] }]
-        );
-        console.log('Dialog result:', JSON.stringify(result));
-
-        if (result && result.success && result.filePath) {
-          this.ngZone.run(() => {
-            this.mqttConfig.clientCertPath = result.filePath;
-            console.log('✅ Client cert path set to:', result.filePath);
-            this.cdr.detectChanges();
-          });
-        } else if (result && result.canceled) {
-          console.log('User canceled file selection');
-        }
-      } catch (error) {
-        console.error('❌ Error in Electron dialog:', error);
-        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
-      }
-    } else {
-      console.log('⚠️ Using fallback HTML input');
-      // Fallback for web mode
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.crt,.pem,.cer';
-      input.onchange = (e: Event) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          this.mqttConfig.clientCertPath = file.name;
-        }
-      };
-      input.click();
-    }
-  }
-
-  async selectClientKeyFile(): Promise<void> {
-    console.log('=== selectClientKeyFile called ===');
-    if (this.isElectron && (window as any).electron?.dialog) {
-      try {
-        console.log('Using Electron dialog...');
-        const result = await (window as any).electron.dialog.selectFile(
-          'Select Client Key',
-          [{ name: 'Key Files', extensions: ['key', 'pem'] }]
-        );
-        console.log('Dialog result:', JSON.stringify(result));
-
-        if (result && result.success && result.filePath) {
-          this.ngZone.run(() => {
-            this.mqttConfig.clientKeyPath = result.filePath;
-            console.log('✅ Client key path set to:', result.filePath);
-            this.cdr.detectChanges();
-          });
-        } else if (result && result.canceled) {
-          console.log('User canceled file selection');
-        }
-      } catch (error) {
-        console.error('❌ Error in Electron dialog:', error);
-        this.showToast('error', 'Error', 'Failed to open file dialog: ' + (error as Error).message);
-      }
-    } else {
-      console.log('⚠️ Using fallback HTML input');
-      // Fallback for web mode
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.key,.pem';
-      input.onchange = (e: Event) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (file) {
-          this.mqttConfig.clientKeyPath = file.name;
-        }
-      };
-      input.click();
-    }
-  }
-
-  // Send topics methods
-  selectSendTopic(topicId: number): void {
+  // Send topics methods - now handled by child component
+  onSendTopicSelected(topicId: number): void {
     this.selectedSendTopicId = topicId;
   }
 
-  addSendTopic(): void {
-    if (!this.currentTab) {
-      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
-      return;
-    }
-
-    this.newTopicName = '';
-    this.showAddTopicDialog = true;
-  }
-
-  saveNewTopic(): void {
-    if (!this.currentTab || !this.newTopicName.trim()) {
-      return;
-    }
-
-    const newTopic: Topic = {
-      id: this.currentTab.nextTopicId++,
-      name: this.newTopicName.trim()
-    };
-    this.currentTab.sendTopics.push(newTopic);
-    this.debounceSave();
-    this.closeAddTopicDialog();
-  }
-
-  closeAddTopicDialog(): void {
-    this.showAddTopicDialog = false;
-    this.newTopicName = '';
-  }
-
-  deleteSendTopic(event: Event, topicId: number): void {
-    event.stopPropagation();
+  onSendTopicsUpdated(event: { topics: SendTopic[]; selectedTopicId: number | null; nextTopicId: number }): void {
     if (!this.currentTab) return;
-
-    const topic = this.currentTab.sendTopics.find(t => t.id === topicId);
-    if (!topic) return;
-
-    this.showConfirm('Delete Topic', `Are you sure you want to delete topic "${topic.name}"?`, () => {
-      if (!this.currentTab) return;
-      const index = this.currentTab.sendTopics.findIndex(t => t.id === topicId);
-      if (index > -1) {
-        this.currentTab.sendTopics.splice(index, 1);
-        if (this.currentTab.selectedSendTopicId === topicId) {
-          this.currentTab.selectedSendTopicId = null;
-        }
-        this.debounceSave();
-      }
-    });
+    this.currentTab.sendTopics = event.topics;
+    this.currentTab.selectedSendTopicId = event.selectedTopicId;
+    this.currentTab.nextTopicId = event.nextTopicId;
+    this.debounceSave();
   }
 
-  // Drag and drop methods
-  onDragStart(event: DragEvent, topicId: number): void {
-    this.draggedTopicId = topicId;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/html', '');
-    }
-  }
-
-  onDragEnd(event: DragEvent): void {
-    this.draggedTopicId = null;
-  }
-
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-  }
-
-  onDrop(event: DragEvent, dropIndex: number): void {
-    event.preventDefault();
-    if (this.draggedTopicId === null) return;
-
-    const dragIndex = this.sendTopics.findIndex(t => t.id === this.draggedTopicId);
-    if (dragIndex === -1 || dragIndex === dropIndex) return;
-
-    const draggedTopic = this.sendTopics[dragIndex];
-    this.sendTopics.splice(dragIndex, 1);
-    this.sendTopics.splice(dropIndex, 0, draggedTopic);
-  }
-
-  // Copy topic to clipboard
-  copyTopicToClipboard(topicName: string): void {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(topicName)
-        .then(() => {
-          this.showToast('success', 'Copied!', `Topic "${topicName}" copied to clipboard`);
-        })
-        .catch(err => {
-          console.error('Failed to copy to clipboard:', err);
-          this.showToast('error', 'Copy Failed', 'Could not copy to clipboard');
-        });
-    } else {
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = topicName;
-      textArea.style.position = 'fixed';
-      textArea.style.left = '-999999px';
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        this.showToast('success', 'Copied!', `Topic "${topicName}" copied to clipboard`);
-      } catch (err) {
-        console.error('Failed to copy to clipboard:', err);
-        this.showToast('error', 'Copy Failed', 'Could not copy to clipboard');
-      }
-      document.body.removeChild(textArea);
-    }
-  }
-
-  // Subscription methods
-  addSubscription(): void {
+  // Subscription methods - now handled by child component
+  onSubscriptionAdded(): void {
     if (!this.currentTab) {
-      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
+      ToastUtil.info('No Connection', 'Please create a MQTT connection first');
       return;
     }
 
@@ -810,18 +400,18 @@ export class AppComponent implements OnInit, OnDestroy {
 
   saveSubscription(): void {
     if (!this.newSubscriptionTopic.trim()) {
-      this.showToast('warning', 'Missing Topic', 'Please enter a topic');
+      ToastUtil.warning('Missing Topic', 'Please enter a topic');
       return;
     }
 
     // Check if current tab is connected
     const currentTab = this.tabs.find(t => t.id === this.activeTabId);
     if (!currentTab || !currentTab.connected) {
-      this.showToast('warning', 'Not Connected', 'Please connect to MQTT broker first');
+      ToastUtil.warning('Not Connected', 'Please connect to MQTT broker first');
       return;
     }
 
-    const newSub: Subscription = {
+    const newSub: SubscribeSubscription = {
       id: currentTab.nextSubscriptionId++,
       topic: this.newSubscriptionTopic.trim(),
       messageCount: 0,
@@ -840,7 +430,7 @@ export class AppComponent implements OnInit, OnDestroy {
       })
       .catch(error => {
         console.error('Failed to subscribe:', error);
-        this.showToast('error', 'Subscription Failed', error.message || 'Unknown error');
+        ToastUtil.error('Subscription Failed', error.message || 'Unknown error');
         // Remove subscription if failed
         const index = currentTab.subscriptions.findIndex(s => s.id === newSub.id);
         if (index > -1) {
@@ -855,8 +445,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.showSubscriptionDialog = false;
   }
 
-  clearSubscriptionMessages(event: Event, subId: number): void {
-    event.stopPropagation();
+  onSubscriptionMessagesCleared(subId: number): void {
     if (!this.currentTab) return;
 
     const sub = this.currentTab.subscriptions.find(s => s.id === subId);
@@ -873,8 +462,7 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  deleteSubscription(event: Event, subId: number): void {
-    event.stopPropagation();
+  onSubscriptionDeleted(subId: number): void {
     if (!this.currentTab) return;
 
     const sub = this.currentTab.subscriptions.find(s => s.id === subId);
@@ -904,72 +492,30 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  formatMessage(message: string): string {
-    try {
-      const parsed = JSON.parse(message);
-      return JSON.stringify(parsed, null, 2);
-    } catch {
-      return message;
-    }
-  }
-
-  isJsonMessage(message: string): boolean {
-    try {
-      JSON.parse(message);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  onSubscriptionDragStart(event: DragEvent, subId: number): void {
-    this.draggedSubscriptionId = subId;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-    }
-  }
-
-  onSubscriptionDragEnd(event: DragEvent): void {
-    this.draggedSubscriptionId = null;
-  }
-
-  onSubscriptionDragOver(event: DragEvent): void {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-  }
-
-  onSubscriptionDrop(event: DragEvent, targetIndex: number): void {
-    event.preventDefault();
-    if (this.draggedSubscriptionId === null || !this.currentTab) return;
-
-    const draggedIndex = this.currentTab.subscriptions.findIndex(s => s.id === this.draggedSubscriptionId);
-    if (draggedIndex === -1 || draggedIndex === targetIndex) return;
-
-    const [draggedItem] = this.currentTab.subscriptions.splice(draggedIndex, 1);
-    this.currentTab.subscriptions.splice(targetIndex, 0, draggedItem);
-    this.draggedSubscriptionId = null;
+  onSubscriptionsReordered(subscriptions: SubscribeSubscription[]): void {
+    if (!this.currentTab) return;
+    this.currentTab.subscriptions = subscriptions;
     this.debounceSave();
   }
 
   // Message methods
-  // Message Editor methods
-  addMessageEditor(): void {
+  // Message Editor methods - now handled by child component
+  onMessageEditorAdded(): void {
     if (!this.currentTab) {
-      this.showToast('info', 'No Connection', 'Please create a MQTT connection first');
+      ToastUtil.info('No Connection', 'Please create a MQTT connection first');
       return;
     }
 
     this.editingMessageEditorId = null;
     this.messageEditorNameInput = `Message ${this.currentTab.nextMessageEditorId}`;
     this.showMessageEditorNameDialog = true;
-  } selectMessageEditor(editorId: number): void {
+  }
+
+  onMessageEditorSelected(editorId: number): void {
     this.selectedMessageEditorId = editorId;
   }
 
-  formatJsonInEditor(event: Event, editorId: number): void {
-    event.stopPropagation();
+  onMessageEditorJsonFormatted(editorId: number): void {
     if (!this.currentTab) return;
 
     const editor = this.currentTab.messageEditors.find(e => e.id === editorId);
@@ -980,12 +526,11 @@ export class AppComponent implements OnInit, OnDestroy {
       editor.message = JSON.stringify(parsed, null, 2);
       this.debounceSave();
     } catch (error) {
-      this.showToast('error', 'Invalid JSON', 'Cannot format the message. Please check the JSON syntax.');
+      ToastUtil.error('Invalid JSON', 'Cannot format the message. Please check the JSON syntax.');
     }
   }
 
-  openMessageEditorNameDialog(event: Event, editorId: number): void {
-    event.stopPropagation();
+  onMessageEditorNameEditRequested(editorId: number): void {
     if (!this.currentTab) return;
 
     const editor = this.currentTab.messageEditors.find(e => e.id === editorId);
@@ -1000,13 +545,13 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.currentTab) return;
 
     if (!this.messageEditorNameInput.trim()) {
-      this.showToast('warning', 'Missing Name', 'Please enter a name');
+      ToastUtil.warning('Missing Name', 'Please enter a name');
       return;
     }
 
     if (this.editingMessageEditorId === null) {
       // Creating new message editor
-      const newEditor: MessageEditor = {
+      const newEditor: EditorMessage = {
         id: this.currentTab.nextMessageEditorId++,
         name: this.messageEditorNameInput.trim(),
         qos: 0,
@@ -1032,12 +577,11 @@ export class AppComponent implements OnInit, OnDestroy {
     this.messageEditorNameInput = '';
   }
 
-  deleteMessageEditor(event: Event, editorId: number): void {
-    event.stopPropagation();
+  onMessageEditorDeleted(editorId: number): void {
     if (!this.currentTab) return;
 
     if (this.currentTab.messageEditors.length <= 1) {
-      this.showToast('warning', 'Cannot Delete', 'At least one message editor is required');
+      ToastUtil.warning('Cannot Delete', 'At least one message editor is required');
       return;
     }
 
@@ -1051,35 +595,106 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  onMessageEditorDragStart(event: DragEvent, editorId: number): void {
-    this.draggedMessageEditorId = editorId;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-    }
-  }
-
-  onMessageEditorDragEnd(event: DragEvent): void {
-    this.draggedMessageEditorId = null;
-  }
-
-  onMessageEditorDragOver(event: DragEvent): void {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
-  }
-
-  onMessageEditorDrop(event: DragEvent, targetIndex: number): void {
-    event.preventDefault();
-    if (this.draggedMessageEditorId === null || !this.currentTab) return;
-
-    const draggedIndex = this.currentTab.messageEditors.findIndex(e => e.id === this.draggedMessageEditorId);
-    if (draggedIndex === -1 || draggedIndex === targetIndex) return;
-
-    const [draggedItem] = this.currentTab.messageEditors.splice(draggedIndex, 1);
-    this.currentTab.messageEditors.splice(targetIndex, 0, draggedItem);
-    this.draggedMessageEditorId = null;
+  onMessageEditorsReordered(editors: EditorMessage[]): void {
+    if (!this.currentTab) return;
+    this.currentTab.messageEditors = editors;
     this.debounceSave();
+  }
+
+  onMessageSent(): void {
+    this.sendMessage();
+  }
+
+  // Connection Manager Component Event Handlers
+  onTabSelected(tabId: number): void {
+    this.selectTab(tabId);
+  }
+
+  onTabCloseRequested(event: { tabId: number; tabLabel: string }): void {
+    this.showConfirm('Close Connection', `Are you sure you want to close "${event.tabLabel}"?`, () => {
+      this.closeTab(event.tabId);
+      // Notify the connection manager to update its state
+      this.connectionManager?.confirmCloseTab(event.tabId);
+    });
+  }
+
+  onTabsUpdated(event: { tabs: ConnectionTab[]; activeTabId: number; nextTabId: number }): void {
+    // Update local tabs with the connection tab changes
+    this.activeTabId = event.activeTabId;
+    this.nextTabId = event.nextTabId;
+    // Note: tabs array is already updated by reference
+    this.debounceSave();
+  }
+
+  onConfigSaved(event: { config: MqttConfig; mode: 'create' | 'edit'; editingTabId: number | null }): void {
+    if (!event.config.name.trim()) {
+      ToastUtil.warning('Missing Client Name', 'Please enter a client name');
+      return;
+    }
+
+    if (event.mode === 'create') {
+      const newTab: Tab = {
+        id: this.nextTabId++,
+        label: event.config.name,
+        connected: false,
+        config: { ...event.config },
+        sendTopics: [],
+        selectedSendTopicId: null,
+        subscriptions: [],
+        messageEditors: [
+          {
+            id: 1,
+            name: 'Message 1',
+            qos: 0,
+            retain: false,
+            message: ''
+          }
+        ],
+        selectedMessageEditorId: 1,
+        nextTopicId: 1,
+        nextSubscriptionId: 1,
+        nextMessageEditorId: 2
+      };
+      this.tabs.push(newTab);
+      this.activeTabId = newTab.id;
+
+      // Connect to MQTT broker immediately
+      this.connectToMqtt(newTab.id, newTab.config!)
+        .then(() => {
+          console.log(`Connected to ${newTab.label}`);
+          this.debounceSave();
+        })
+        .catch(error => {
+          console.error(`Failed to connect to ${newTab.label}:`, error);
+          ToastUtil.error('Connection Failed', error.message || 'Unknown error');
+          this.debounceSave();
+        });
+    } else if (event.mode === 'edit' && event.editingTabId !== null) {
+      const tab = this.tabs.find(t => t.id === event.editingTabId);
+      if (tab) {
+        const wasConnected = tab.connected;
+        tab.label = event.config.name;
+        tab.config = { ...event.config };
+
+        // If was connected, disconnect and reconnect with new config
+        if (wasConnected) {
+          this.mqttClientService.disconnect(tab.id);
+          tab.connected = false;
+        } else {
+          this.debounceSave();
+        }
+        this.connectToMqtt(tab.id, tab.config)
+          .then(() => {
+            console.log(`Reconnected to ${tab.label} with new config`);
+            this.debounceSave();
+          })
+          .catch(error => {
+            console.error(`Failed to reconnect to ${tab.label}:`, error);
+            ToastUtil.error('Reconnection Failed', error.message || 'Unknown error');
+            this.debounceSave();
+          });
+      }
+    }
   }
 
   sendMessage(): void {
@@ -1090,19 +705,19 @@ export class AppComponent implements OnInit, OnDestroy {
 
     const selectedTopic = this.currentTab.sendTopics.find(t => t.id === this.currentTab!.selectedSendTopicId);
     if (!selectedTopic) {
-      this.showToast('warning', 'No Topic Selected', 'Please select a topic from the left panel');
+      ToastUtil.warning('No Topic Selected', 'Please select a topic from the left panel');
       return;
     }
 
     // Check if current tab is connected
     if (!this.currentTab.connected) {
-      this.showToast('warning', 'Not Connected', 'Please connect to MQTT broker first');
+      ToastUtil.warning('Not Connected', 'Please connect to MQTT broker first');
       return;
     }
 
     // Check if message is empty
     if (!selectedEditor.message || selectedEditor.message.trim() === '') {
-      this.showToast('warning', 'Empty Message', 'Please enter a message to send');
+      ToastUtil.warning('Empty Message', 'Please enter a message to send');
       return;
     }
 
@@ -1122,10 +737,10 @@ export class AppComponent implements OnInit, OnDestroy {
       });
 
       // Show success notification
-      this.showToast('success', 'Message Sent', `Successfully published to ${selectedTopic.name}`);
+      ToastUtil.success('Message Sent', `Successfully published to ${selectedTopic.name}`);
     }).catch(error => {
       console.error('Failed to send message:', error);
-      this.showToast('error', 'Send Failed', error.message || 'Unknown error');
+      ToastUtil.error('Send Failed', error.message || 'Unknown error');
     });
   }
 

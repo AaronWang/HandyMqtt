@@ -1,0 +1,58 @@
+<div class="panel-header">
+  <h3>Send to Topic</h3>
+  <button class="add-btn" (click)="addTopic()" [disabled]="isDisabled" [title]="isDisabled ? 'Please create a connection first' : 'Add Topic'">+</button>
+</div>
+<div class="panel-content topic-panel-content">
+  <div class="topic-list">
+    @for (topic of topics; track topic.id; let i = $index) {
+      <div class="topic-item"
+           [class.selected]="topic.id === selectedTopicId"
+           [class.dragging]="draggedTopicId === topic.id"
+           (click)="selectTopic(topic.id)"
+           (dblclick)="copyTopicToClipboard(topic.name)"
+           draggable="true"
+           (dragstart)="onDragStart($event, topic.id)"
+           (dragend)="onDragEnd($event)"
+           (dragover)="onDragOver($event)"
+           (drop)="onDrop($event, i)">
+        <span class="radio-icon" [class.checked]="topic.id === selectedTopicId" title="Select as active topic">
+          {{ topic.id === selectedTopicId ? '◉' : '○' }}
+        </span>
+        <span class="topic-icon">📤</span>
+        <span class="topic-name" title="Double click to copy">{{ topic.name }}</span>
+        <button class="topic-delete" (click)="deleteTopic($event, topic.id)" title="Delete">×</button>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Add Topic Dialog -->
+@if (showAddTopicDialog) {
+  <div class="dialog-overlay" (click)="closeAddTopicDialog()">
+    <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
+      <div class="dialog-header">
+        <h2>Add Topic</h2>
+        <button class="dialog-close" (click)="closeAddTopicDialog()">&times;</button>
+      </div>
+      <div class="dialog-content">
+        <form class="topic-form">
+          <div class="form-group">
+            <label>Topic Name *</label>
+            <input
+              type="text"
+              [(ngModel)]="newTopicName"
+              name="topicName"
+              placeholder="home/temperature"
+              required
+              autofocus
+              (keydown.enter)="saveNewTopic()" />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeAddTopicDialog()">Cancel</button>
+        <button class="btn-primary" (click)="saveNewTopic()">Add</button>
+      </div>
+    </div>
+  </div>
+}

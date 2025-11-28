@@ -1,0 +1,49 @@
+<div class="panel-header">
+  <h3>Subscribe Topics</h3>
+  <button class="add-btn" (click)="addSubscription()" [disabled]="isDisabled" [title]="isDisabled ? 'Please create a connection first' : 'Add Subscription'">+</button>
+</div>
+<div class="panel-content">
+  <div class="subscribe-list-horizontal">
+    @for (subscription of subscriptions; track subscription.id; let i = $index) {
+      <div class="subscription-card"
+           [class.dragging]="draggedSubscriptionId === subscription.id"
+           [style.width.px]="subscription.width || 320">
+        <div class="subscription-card-header"
+             draggable="true"
+             (dragstart)="onDragStart($event, subscription.id)"
+             (dragend)="onDragEnd($event)"
+             (dragover)="onDragOver($event)"
+             (drop)="onDrop($event, i)">
+          <div class="subscription-title">
+            <span class="subscribe-status-icon"
+                  [class.subscribed]="subscription.subscribed && isConnected"
+                  [class.failed]="!subscription.subscribed || !isConnected">
+              {{ (subscription.subscribed && isConnected) ? '✓' : '✗' }}
+            </span>
+            <span class="topic-name">{{ subscription.topic }}</span>
+            <span class="message-count">{{ subscription.messageCount }}</span>
+          </div>
+          <div class="subscription-actions">
+            <button class="subscription-clean" (click)="clearMessages($event, subscription.id)" title="Clear Messages">🗑️</button>
+            <button class="subscription-delete" (click)="deleteSubscription($event, subscription.id)" title="Unsubscribe">×</button>
+          </div>
+        </div>
+        <div class="subscription-card-content">
+          @if (subscription.messages.length > 0) {
+            @for (msg of subscription.messages; track msg.timestamp) {
+              <div class="message-item">
+                <div class="message-timestamp">{{ msg.timestamp | date:'HH:mm:ss' }}</div>
+                <pre class="message-payload" [class.json-payload]="isJsonMessage(msg.payload)">{{ formatMessage(msg.payload) }}</pre>
+              </div>
+            }
+          } @else {
+            <div class="no-messages">No messages received yet</div>
+          }
+        </div>
+        <div class="resize-handle-vertical"
+             (mousedown)="startResize($event, subscription.id)"
+             title="Drag to resize"></div>
+      </div>
+    }
+  </div>
+</div>

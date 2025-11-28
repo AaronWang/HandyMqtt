@@ -1,0 +1,204 @@
+<!-- Header with Tabs and New Client Button -->
+<div class="header">
+  <div class="tabs-container">
+    <div class="tab-list">
+      @for (tab of tabs; track tab.id) {
+        <div
+          class="tab"
+          [class.active]="tab.id === activeTabId"
+          (click)="selectTab(tab.id)">
+          <span class="connection-status" [class.connected]="tab.connected" [title]="tab.connected ? 'Connected' : 'Disconnected'">
+            ●
+          </span>
+          <span class="tab-label">{{ tab.label }}</span>
+          <button class="tab-edit" (click)="editTab($event, tab.id)" title="Edit">
+            ✎
+          </button>
+          <button class="tab-close" (click)="closeTab($event, tab.id)" title="Close">
+            ×
+          </button>
+        </div>
+      }
+    </div>
+    <button class="new-client-btn" (click)="createNewClient()">
+      <span class="btn-icon">+</span>
+      <span class="btn-text">New MQTT Client</span>
+    </button>
+  </div>
+</div>
+
+<!-- MQTT Configuration Dialog -->
+@if (showConfigDialog) {
+  <div class="dialog-overlay" (click)="closeConfigDialog()">
+    <div class="dialog-container" (click)="$event.stopPropagation()">
+      <div class="dialog-header">
+        <h2>{{ dialogMode === 'create' ? 'New MQTT Client' : 'Edit MQTT Client' }}</h2>
+        <button class="dialog-close" (click)="closeConfigDialog()">&times;</button>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="dialog-tabs">
+        <button
+          class="dialog-tab"
+          [class.active]="configDialogTab === 'general'"
+          (click)="switchConfigTab('general')">
+          General
+        </button>
+        <button
+          class="dialog-tab"
+          [class.active]="configDialogTab === 'advanced'"
+          (click)="switchConfigTab('advanced')">
+          Advanced
+        </button>
+      </div>
+
+      <div class="dialog-content">
+        <!-- General Tab -->
+        @if (configDialogTab === 'general') {
+          <form class="mqtt-form">
+            <div class="form-group">
+              <label>Client Name *</label>
+              <input type="text" [(ngModel)]="mqttConfig.name" name="name" placeholder="My MQTT Client" required />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Host *</label>
+                <input type="text" [(ngModel)]="mqttConfig.host" name="host" placeholder="localhost or broker.example.com" required />
+              </div>
+              <div class="form-group">
+                <label>Port *</label>
+                <input type="number" [(ngModel)]="mqttConfig.port" name="port" placeholder="1883" required />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Protocol</label>
+                <select [(ngModel)]="mqttConfig.protocol" name="protocol">
+                  <option value="mqtt" [disabled]="!isElectron">mqtt://{{ isElectron ? '' : ' (Desktop only)' }}</option>
+                  <option value="mqtts" [disabled]="!isElectron">mqtts://{{ isElectron ? '' : ' (Desktop only)' }}</option>
+                  <option value="ws">ws://</option>
+                  <option value="wss">wss://</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Client ID</label>
+                <input type="text" [(ngModel)]="mqttConfig.clientId" name="clientId" placeholder="Auto-generated" />
+              </div>
+            </div>
+
+            @if (mqttConfig.protocol === 'ws' || mqttConfig.protocol === 'wss') {
+              <div class="form-group">
+                <label>Path</label>
+                <input type="text" [(ngModel)]="mqttConfig.path" name="path" placeholder="/mqtt (optional)" />
+                <small class="form-hint">WebSocket path, e.g., /mqtt or /ws</small>
+              </div>
+            }
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Username</label>
+                <input type="text" [(ngModel)]="mqttConfig.username" name="username" placeholder="Optional" />
+              </div>
+              <div class="form-group">
+                <label>Password</label>
+                <input type="password" [(ngModel)]="mqttConfig.password" name="password" placeholder="Optional" />
+              </div>
+            </div>
+
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" [(ngModel)]="mqttConfig.useSSL" name="useSSL" />
+                Use SSL/TLS
+              </label>
+            </div>
+
+            <!-- Certificate Authentication Section (Only for mqtt/mqtts protocols) -->
+            @if (mqttConfig.protocol === 'mqtt' || mqttConfig.protocol === 'mqtts') {
+              <div class="form-section">
+                <h3 class="section-title">Certificate Authentication (Self-Signed)</h3>
+
+                <div class="form-group checkbox-group">
+                  <label>
+                    <input type="checkbox" [(ngModel)]="mqttConfig.useCertificateAuth" name="useCertificateAuth" />
+                    Use Certificate Authentication
+                  </label>
+                </div>
+
+                @if (mqttConfig.useCertificateAuth) {
+                  <div class="form-group">
+                    <label>CA Certificate File</label>
+                    <div class="input-with-button">
+                      <input type="text" [(ngModel)]="mqttConfig.caFilePath" name="caFilePath" placeholder="/path/to/ca.crt" />
+                      <button type="button" class="file-select-btn" (click)="selectCaFile()" title="Browse">📁</button>
+                    </div>
+                    <small class="form-hint">Root CA certificate file path</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Client Certificate File</label>
+                    <div class="input-with-button">
+                      <input type="text" [(ngModel)]="mqttConfig.clientCertPath" name="clientCertPath" placeholder="/path/to/client.crt" />
+                      <button type="button" class="file-select-btn" (click)="selectClientCertFile()" title="Browse">📁</button>
+                    </div>
+                    <small class="form-hint">Client certificate file path</small>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Client Key File</label>
+                    <div class="input-with-button">
+                      <input type="text" [(ngModel)]="mqttConfig.clientKeyPath" name="clientKeyPath" placeholder="/path/to/client.key" />
+                      <button type="button" class="file-select-btn" (click)="selectClientKeyFile()" title="Browse">📁</button>
+                    </div>
+                    <small class="form-hint">Client private key file path</small>
+                  </div>
+                }
+              </div>
+            }
+          </form>
+        }
+
+        <!-- Advanced Tab -->
+        @if (configDialogTab === 'advanced') {
+          <form class="mqtt-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Connect Timeout (seconds)</label>
+                <input type="number" [(ngModel)]="mqttConfig.connectTimeout" name="connectTimeout" placeholder="30" min="1" max="300" />
+              </div>
+              <div class="form-group">
+                <label>Keep Alive (seconds)</label>
+                <input type="number" [(ngModel)]="mqttConfig.keepAlive" name="keepAlive" placeholder="60" min="0" max="65535" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>MQTT Version</label>
+              <select [(ngModel)]="mqttConfig.mqttVersion" name="mqttVersion">
+                <option value="3.1.1">MQTT 3.1.1</option>
+                <option value="5.0">MQTT 5.0</option>
+              </select>
+            </div>
+
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" [(ngModel)]="mqttConfig.cleanSession" name="cleanSession" />
+                Clean Session
+              </label>
+              <label>
+                <input type="checkbox" [(ngModel)]="mqttConfig.autoReconnect" name="autoReconnect" />
+                Auto Reconnect
+              </label>
+            </div>
+          </form>
+        }
+      </div>
+
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeConfigDialog()">Cancel</button>
+        <button class="btn-primary" (click)="saveConfig()">{{ dialogMode === 'create' ? 'Create' : 'Save' }}</button>
+      </div>
+    </div>
+  </div>
+}
