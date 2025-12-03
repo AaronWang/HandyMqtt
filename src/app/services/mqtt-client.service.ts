@@ -82,8 +82,15 @@ export class MqttClientService {
   connect(tabId: number, config: MqttConfig): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // Disconnect existing client if any
-        this.disconnect(tabId);
+        // Check if there's already a connected client
+        const existingClient = this.clients.get(tabId);
+        const existingStatus = this.connectionStatus.get(tabId);
+
+        // Only disconnect if client exists and is connected or connecting
+        if (existingClient) {
+          console.log(`Disconnecting existing client for tab ${tabId} before reconnecting`);
+          this.disconnect(tabId);
+        }
 
         // Build connection URL
         const url = `${config.protocol}://${config.host}:${config.port}`;
@@ -231,25 +238,31 @@ export class MqttClientService {
 
         // Handle disconnection
         client.on('close', () => {
-          console.log(`⚠️ MQTT disconnected for tab ${tabId}`);
-          this.connectionStatus.set(tabId, { connected: false });
+          // Only process if client is still managed (not explicitly disconnected)
+          if (this.clients.has(tabId)) {
+            console.log(`⚠️ MQTT disconnected for tab ${tabId}`);
+            this.connectionStatus.set(tabId, { connected: false });
 
-          // Notify connection status change
-          const statusCallback = this.connectionStatusCallbacks.get(tabId);
-          if (statusCallback) {
-            statusCallback(false);
+            // Notify connection status change
+            const statusCallback = this.connectionStatusCallbacks.get(tabId);
+            if (statusCallback) {
+              statusCallback(false);
+            }
           }
         });
 
         // Handle offline
         client.on('offline', () => {
-          console.log(`📴 MQTT offline for tab ${tabId}`);
-          this.connectionStatus.set(tabId, { connected: false });
+          // Only process if client is still managed (not explicitly disconnected)
+          if (this.clients.has(tabId)) {
+            console.log(`📴 MQTT offline for tab ${tabId}`);
+            this.connectionStatus.set(tabId, { connected: false });
 
-          // Notify connection status change
-          const statusCallback = this.connectionStatusCallbacks.get(tabId);
-          if (statusCallback) {
-            statusCallback(false);
+            // Notify connection status change
+            const statusCallback = this.connectionStatusCallbacks.get(tabId);
+            if (statusCallback) {
+              statusCallback(false);
+            }
           }
         });
 
@@ -268,6 +281,15 @@ export class MqttClientService {
     const client = this.clients.get(tabId);
     if (client) {
       console.log('Disconnecting MQTT client for tab:', tabId);
+
+      // Remove all event listeners before closing
+      client.removeAllListeners('connect');
+      client.removeAllListeners('reconnect');
+      client.removeAllListeners('error');
+      client.removeAllListeners('message');
+      client.removeAllListeners('close');
+      client.removeAllListeners('offline');
+
       client.end(true);
       this.clients.delete(tabId);
       this.connectionStatus.delete(tabId);

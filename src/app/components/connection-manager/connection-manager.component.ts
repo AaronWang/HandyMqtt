@@ -233,9 +233,9 @@ export class ConnectionManagerComponent {
     return {
       name: '',
       host: 'localhost',
-      port: 1883,
-      path: '',
-      protocol: 'mqtt',
+      port: this.isElectron ? 1883 : 9001,
+      path: this.isElectron ? '' : '/mqtt',
+      protocol: this.isElectron ? 'mqtt' : 'ws',
       clientId: 'mqtt_' + Math.random().toString(16).substring(2, 10),
       username: '',
       password: '',
