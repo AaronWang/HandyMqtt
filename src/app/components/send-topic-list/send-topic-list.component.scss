@@ -93,6 +93,7 @@
     background-color: #f0f0f0;
     border-color: #d0d0d0;
 
+    .topic-edit,
     .topic-delete {
       opacity: 1;
     }
@@ -133,6 +134,29 @@
     flex: 1;
     font-size: 13px;
     font-family: 'Courier New', monospace;
+  }
+
+  .topic-edit {
+    background: none;
+    border: none;
+    color: #666666;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s;
+    border-radius: 3px;
+
+    &:hover {
+      color: #007acc;
+      background-color: rgba(0, 122, 204, 0.1);
+    }
   }
 
   .topic-delete {

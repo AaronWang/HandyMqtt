@@ -25,6 +25,7 @@ export class SubscribeTopicsComponent {
 
   @Output() subscriptionAdded = new EventEmitter<void>();
   @Output() subscriptionDeleted = new EventEmitter<number>();
+  @Output() subscriptionEdited = new EventEmitter<number>();
   @Output() subscriptionMessagesCleared = new EventEmitter<number>();
   @Output() subscriptionsReordered = new EventEmitter<Subscription[]>();
 
@@ -42,6 +43,11 @@ export class SubscribeTopicsComponent {
   deleteSubscription(event: Event, subId: number): void {
     event.stopPropagation();
     this.subscriptionDeleted.emit(subId);
+  }
+
+  editSubscription(event: Event, subId: number): void {
+    event.stopPropagation();
+    this.subscriptionEdited.emit(subId);
   }
 
   clearMessages(event: Event, subId: number): void {

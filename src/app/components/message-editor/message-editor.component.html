@@ -45,12 +45,13 @@
             class="message-input"
             [(ngModel)]="editor.message"
             (ngModelChange)="onDataChange()"
+            (click)="$event.stopPropagation()"
             placeholder="Enter message payload..."></textarea>
           @if (editor.id === selectedEditorId) {
             <button class="send-btn-card" (click)="sendMessage()">Send</button>
           }
         </div>
-        <div class="resize-handle-vertical" 
+        <div class="resize-handle-vertical"
              (mousedown)="startResize($event, editor.id)"
              title="Drag to resize"></div>
       </div>

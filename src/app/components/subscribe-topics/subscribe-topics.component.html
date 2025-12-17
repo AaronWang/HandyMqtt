@@ -25,6 +25,7 @@
           </div>
           <div class="subscription-actions">
             <button class="subscription-clean" (click)="clearMessages($event, subscription.id)" title="Clear Messages">🗑️</button>
+            <button class="subscription-edit" (click)="editSubscription($event, subscription.id)" title="Edit Topic">✏️</button>
             <button class="subscription-delete" (click)="deleteSubscription($event, subscription.id)" title="Unsubscribe">×</button>
           </div>
         </div>

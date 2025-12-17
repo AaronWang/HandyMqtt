@@ -41,6 +41,7 @@
           [isDisabled]="!currentTab"
           (subscriptionAdded)="onSubscriptionAdded()"
           (subscriptionDeleted)="onSubscriptionDeleted($event)"
+          (subscriptionEdited)="onSubscriptionEdited($event)"
           (subscriptionMessagesCleared)="onSubscriptionMessagesCleared($event)"
           (subscriptionsReordered)="onSubscriptionsReordered($event)">
         </app-subscribe-topics>
@@ -89,6 +90,30 @@
       <div class="dialog-footer">
         <button class="btn-secondary" (click)="closeSubscriptionDialog()">Cancel</button>
         <button class="btn-primary" (click)="saveSubscription()">Subscribe</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Edit Subscription Dialog -->
+@if (showEditSubscriptionDialog) {
+  <div class="dialog-overlay" (click)="closeEditSubscriptionDialog()">
+    <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
+      <div class="dialog-header">
+        <h2>Edit Subscription</h2>
+        <button class="dialog-close" (click)="closeEditSubscriptionDialog()">&times;</button>
+      </div>
+      <div class="dialog-content">
+        <form class="mqtt-form">
+          <div class="form-group">
+            <label>Topic *</label>
+            <input type="text" [(ngModel)]="editSubscriptionTopic" name="editTopic" placeholder="sensor/temperature or sensor/#" required autofocus (keydown.enter)="saveEditedSubscription()" />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeEditSubscriptionDialog()">Cancel</button>
+        <button class="btn-primary" (click)="saveEditedSubscription()">Save & Resubscribe</button>
       </div>
     </div>
   </div>

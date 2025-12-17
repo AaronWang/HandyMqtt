@@ -26,7 +26,10 @@ export class SendTopicListComponent {
 
   // Internal state
   showAddTopicDialog = false;
+  showEditTopicDialog = false;
   newTopicName = '';
+  editingTopicId: number | null = null;
+  editTopicName = '';
   draggedTopicId: number | null = null;
 
   selectTopic(topicId: number): void {
@@ -60,6 +63,35 @@ export class SendTopicListComponent {
   closeAddTopicDialog(): void {
     this.showAddTopicDialog = false;
     this.newTopicName = '';
+  }
+
+  editTopic(event: Event, topicId: number): void {
+    event.stopPropagation();
+    const topic = this.topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    this.editingTopicId = topicId;
+    this.editTopicName = topic.name;
+    this.showEditTopicDialog = true;
+  }
+
+  saveEditedTopic(): void {
+    if (!this.editTopicName.trim() || this.editingTopicId === null) {
+      return;
+    }
+
+    const topic = this.topics.find(t => t.id === this.editingTopicId);
+    if (topic) {
+      topic.name = this.editTopicName.trim();
+      this.emitTopicsUpdate();
+    }
+    this.closeEditTopicDialog();
+  }
+
+  closeEditTopicDialog(): void {
+    this.showEditTopicDialog = false;
+    this.editingTopicId = null;
+    this.editTopicName = '';
   }
 
   async deleteTopic(event: Event, topicId: number): Promise<void> {

@@ -304,7 +304,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   // Dialog state
   showSubscriptionDialog = false;
+  showEditSubscriptionDialog = false;
   newSubscriptionTopic = '';
+  editingSubscriptionId: number | null = null;
+  editSubscriptionTopic = '';
 
   // Computed getters for current tab data
   get currentTab(): Tab | undefined {
@@ -443,6 +446,90 @@ export class AppComponent implements OnInit, OnDestroy {
 
   closeSubscriptionDialog(): void {
     this.showSubscriptionDialog = false;
+  }
+
+  onSubscriptionEdited(subId: number): void {
+    if (!this.currentTab) return;
+
+    const sub = this.currentTab.subscriptions.find(s => s.id === subId);
+    if (!sub) return;
+
+    this.editingSubscriptionId = subId;
+    this.editSubscriptionTopic = sub.topic;
+    this.showEditSubscriptionDialog = true;
+  }
+
+  async saveEditedSubscription(): Promise<void> {
+    if (!this.editSubscriptionTopic.trim() || this.editingSubscriptionId === null) {
+      ToastUtil.warning('Missing Topic', 'Please enter a topic');
+      return;
+    }
+
+    const currentTab = this.tabs.find(t => t.id === this.activeTabId);
+    if (!currentTab) {
+      return;
+    }
+
+    const sub = currentTab.subscriptions.find(s => s.id === this.editingSubscriptionId);
+    if (!sub) return;
+
+    const oldTopic = sub.topic;
+    const newTopic = this.editSubscriptionTopic.trim();
+
+    // If topic hasn't changed, just close dialog
+    if (oldTopic === newTopic) {
+      this.closeEditSubscriptionDialog();
+      return;
+    }
+
+    // If not connected, just update the topic name and save
+    if (!currentTab.connected) {
+      sub.topic = newTopic;
+      sub.subscribed = false;
+      ToastUtil.success('Topic Saved', `Topic changed to "${newTopic}". Will subscribe when connected.`);
+      this.debounceSave();
+      this.closeEditSubscriptionDialog();
+      return;
+    }
+
+    // If connected, unsubscribe old and subscribe new
+    try {
+      // Unsubscribe from old topic
+      await this.mqttClientService.unsubscribe(this.activeTabId, oldTopic);
+      console.log('Unsubscribed from old topic:', oldTopic);
+
+      // Update topic name
+      sub.topic = newTopic;
+      sub.subscribed = false;
+
+      // Subscribe to new topic
+      await this.mqttClientService.subscribe(this.activeTabId, newTopic, 0);
+      console.log('Subscribed to new topic:', newTopic);
+      sub.subscribed = true;
+
+      ToastUtil.success('Topic Updated', `Successfully changed from "${oldTopic}" to "${newTopic}"`);
+      this.debounceSave();
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      ToastUtil.error('Update Failed', (error as Error).message || 'Failed to update topic');
+      // Revert topic name on failure
+      sub.topic = oldTopic;
+      // Try to resubscribe to old topic
+      try {
+        await this.mqttClientService.subscribe(this.activeTabId, oldTopic, 0);
+        sub.subscribed = true;
+      } catch (resubError) {
+        sub.subscribed = false;
+      }
+    }
+
+    this.closeEditSubscriptionDialog();
+  }
+
+  closeEditSubscriptionDialog(): void {
+    this.showEditSubscriptionDialog = false;
+    this.editingSubscriptionId = null;
+    this.editSubscriptionTopic = '';
   }
 
   onSubscriptionMessagesCleared(subId: number): void {

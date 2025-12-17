@@ -20,6 +20,7 @@
         </span>
         <span class="topic-icon">📤</span>
         <span class="topic-name" title="Double click to copy">{{ topic.name }}</span>
+        <button class="topic-edit" (click)="editTopic($event, topic.id)" title="Edit">✏️</button>
         <button class="topic-delete" (click)="deleteTopic($event, topic.id)" title="Delete">×</button>
       </div>
     }
@@ -52,6 +53,37 @@
       <div class="dialog-footer">
         <button class="btn-secondary" (click)="closeAddTopicDialog()">Cancel</button>
         <button class="btn-primary" (click)="saveNewTopic()">Add</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Edit Topic Dialog -->
+@if (showEditTopicDialog) {
+  <div class="dialog-overlay" (click)="closeEditTopicDialog()">
+    <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
+      <div class="dialog-header">
+        <h2>Edit Topic</h2>
+        <button class="dialog-close" (click)="closeEditTopicDialog()">&times;</button>
+      </div>
+      <div class="dialog-content">
+        <form class="topic-form">
+          <div class="form-group">
+            <label>Topic Name *</label>
+            <input
+              type="text"
+              [(ngModel)]="editTopicName"
+              name="editTopicName"
+              placeholder="home/temperature"
+              required
+              autofocus
+              (keydown.enter)="saveEditedTopic()" />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeEditTopicDialog()">Cancel</button>
+        <button class="btn-primary" (click)="saveEditedTopic()">Save</button>
       </div>
     </div>
   </div>
