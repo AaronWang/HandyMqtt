@@ -1,0 +1,442 @@
+:host {
+  display: block;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.mqtt-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #ffffff;
+  color: #333333;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+// Content Area
+.content-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+// Top Row (Send to Topic and Subscribe Topics)
+.top-row {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+  overflow: hidden;
+}
+
+// Left Panel
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e0e0e0;
+  background-color: #f9f9f9;
+  min-width: 150px;
+  max-width: 400px;
+}
+
+// Panel Common Styles (shared by subscribe and message editor areas)
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #e8e8e8;
+  border-bottom: 1px solid #d0d0d0;
+
+  h3 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #555555;
+  }
+
+  .add-btn,
+  .send-btn {
+    background-color: #0e639c;
+    border: none;
+    border-radius: 3px;
+    color: white;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &:hover {
+      background-color: #1177bb;
+    }
+  }
+
+  .add-btn {
+    font-size: 16px;
+    padding: 2px 8px;
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      background-color: #e0e0e0;
+
+      &:hover {
+        background-color: #e0e0e0;
+      }
+    }
+  }
+}
+
+.panel-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f5f5f5;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 5px;
+
+    &:hover {
+      background: #a0a0a0;
+    }
+  }
+}
+
+// Subscribe Area
+.subscribe-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+// subscribe-list and subscription-card styles moved to SubscribeTopicsComponent
+
+// subscription-item and subscription-card styles moved to SubscribeTopicsComponent
+
+// Message Editor Area (Full Width)
+.message-editor-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  width: 100%;
+}
+
+// message-editor styles moved to MessageEditorComponent
+
+// Resize Handles
+.resize-handle {
+  width: 5px;
+  background-color: #e0e0e0;
+  cursor: ew-resize;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #007acc;
+  }
+}
+
+.resize-handle-horizontal {
+  height: 5px;
+  background-color: #e0e0e0;
+  cursor: ns-resize;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #007acc;
+  }
+}
+
+// MQTT Configuration Dialog
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog-container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+
+  &.dialog-small {
+    max-width: 400px;
+  }
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+
+  h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #333333;
+  }
+
+  .dialog-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #666666;
+    cursor: pointer;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+
+    &:hover {
+      background-color: #f0f0f0;
+      color: #333333;
+    }
+  }
+}
+
+.dialog-tabs {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #f9f9f9;
+  padding: 0 20px;
+
+  .dialog-tab {
+    padding: 12px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666666;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+
+    &:hover {
+      color: #0e639c;
+      background-color: rgba(14, 99, 156, 0.05);
+    }
+
+    &.active {
+      color: #0e639c;
+      border-bottom-color: #0e639c;
+      background-color: #ffffff;
+    }
+  }
+}
+
+.dialog-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.mqtt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #333333;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  select {
+    padding: 8px 12px;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #333333;
+    background-color: #ffffff;
+    transition: border-color 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: #007acc;
+    }
+
+    &::placeholder {
+      color: #999999;
+    }
+  }
+
+  select {
+    cursor: pointer;
+  }
+
+  &.checkbox-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: normal;
+      cursor: pointer;
+
+      input[type="checkbox"] {
+        cursor: pointer;
+      }
+    }
+  }
+}
+
+.form-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+
+  .section-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #333333;
+    margin: 0 0 16px 0;
+  }
+}
+
+.form-hint {
+  display: block;
+  font-size: 12px;
+  color: #666666;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  input[type="text"] {
+    flex: 1;
+  }
+
+  .file-select-btn {
+    padding: 8px 12px;
+    background-color: #f0f0f0;
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    min-width: 40px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      background-color: #e0e0e0;
+      border-color: #b0b0b0;
+    }
+
+    &:active {
+      background-color: #d0d0d0;
+    }
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e0e0e0;
+
+  button {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &.btn-secondary {
+      background-color: #f0f0f0;
+      color: #333333;
+
+      &:hover {
+        background-color: #e0e0e0;
+      }
+    }
+
+    &.btn-primary {
+      background-color: #0e639c;
+      color: white;
+
+      &:hover {
+        background-color: #1177bb;
+      }
+    }
+
+    &.btn-danger {
+      background-color: #d32f2f;
+      color: white;
+
+      &:hover {
+        background-color: #b71c1c;
+      }
+    }
+  }
+}
+
+.confirm-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333333;
+  margin: 0;
+  padding: 0;
+}

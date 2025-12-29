@@ -51,6 +51,7 @@ export class ConnectionManagerComponent {
   @Output() tabCloseRequested = new EventEmitter<{ tabId: number; tabLabel: string }>();
   @Output() tabsUpdated = new EventEmitter<{ tabs: ConnectionTab[]; activeTabId: number; nextTabId: number }>();
   @Output() configSaved = new EventEmitter<{ config: MqttConfig; mode: 'create' | 'edit'; editingTabId: number | null }>();
+  @Output() reconnectRequested = new EventEmitter<number>();
 
   // Internal state
   showConfigDialog = false;
@@ -62,6 +63,12 @@ export class ConnectionManagerComponent {
   selectTab(tabId: number): void {
     this.activeTabId = tabId;
     this.tabSelected.emit(tabId);
+
+    // If the selected tab is not connected, trigger reconnect
+    const tab = this.tabs.find(t => t.id === tabId);
+    if (tab && !tab.connected && tab.config) {
+      this.reconnectRequested.emit(tabId);
+    }
   }
 
   closeTab(event: Event, tabId: number): void {

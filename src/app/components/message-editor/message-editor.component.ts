@@ -33,6 +33,7 @@ export class MessageEditorComponent {
   @Output() editorDataChanged = new EventEmitter<void>();
 
   draggedEditorId: number | null = null;
+  focusedEditorId: number | null = null;
 
   // Resize properties
   private resizingEditorId: number | null = null;
@@ -68,6 +69,21 @@ export class MessageEditorComponent {
 
   onDataChange(): void {
     this.editorDataChanged.emit();
+  }
+
+  onTextareaFocus(editorId: number): void {
+    this.focusedEditorId = editorId;
+    // Also select the editor when focusing on textarea
+    if (this.selectedEditorId !== editorId) {
+      this.selectEditor(editorId);
+    }
+  }
+
+  onTextareaBlur(): void {
+    // Keep the focused state for a brief moment to allow send button click
+    setTimeout(() => {
+      this.focusedEditorId = null;
+    }, 200);
   }
 
   // Drag and drop methods

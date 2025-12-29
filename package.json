@@ -11,6 +11,12 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "electron:tsc": "tsc -p tsconfig.electron.json",
+    "comments_1": " 同时运行两个命令 concurrently",
+    "comments_2": " 1. npm run start 启动 Angular 开发服务器",
+    "comments_3": " 2. 后面是3个按照顺序执行的命令",
+    "comments_4": "    a. wait-on 等待服务器启动后再运行 electron",
+    "comments_5": "    b. 设置环境变量 NODE_ENV=development",
+    "comments_6": "    c. 运行 electron .",
     "electron:dev": "concurrently \"npm run start\" \"wait-on http://localhost:4200 && NODE_ENV=development npm run electron:tsc && electron .\"",
     "electron:build": "npm run build && npm run electron:tsc && electron-builder",
     "package": "npm run electron:build"
