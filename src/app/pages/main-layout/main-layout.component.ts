@@ -109,8 +109,7 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
 
   private async connectToMqtt(tabId: number, config: MqttConfig): Promise<void> {
     try {
-      await this.mqttClientService.connect(tabId, config);
-
+      // Set up callbacks BEFORE connecting to ensure they catch the initial connect event
       // Set up message callback for this connection
       this.mqttClientService.setMessageCallback(tabId, (topic: string, message: string) => {
         // Use NgZone to ensure Angular change detection is triggered immediately
@@ -121,26 +120,30 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
 
       // Set up connection status callback
       this.mqttClientService.setConnectionStatusCallback(tabId, (connected: boolean) => {
+        console.log(`🔔 connectionStatusCallback triggered for tab ${tabId}, connected: ${connected}`);
         const tab = this.tabs.find(t => t.id === tabId);
         if (tab) {
           tab.connected = connected;
 
-          // Resubscribe to all topics when reconnected
+          // Resubscribe to all topics when connected (including first connection)
           if (connected) {
+            console.log(`✅ Connection established, calling resubscribeAllTopics for tab ${tabId}...`);
             this.resubscribeAllTopics(tabId);
+          } else {
+            console.log(`❌ Disconnected for tab ${tabId}`);
           }
 
           this.debounceSave();
+        } else {
+          console.warn(`⚠️ connectionStatusCallback: Tab ${tabId} not found!`);
         }
       });
 
-      const tab = this.tabs.find(t => t.id === tabId);
-      if (tab) {
-        tab.connected = true;
+      // Now connect - this will trigger the connectionStatusCallback above
+      await this.mqttClientService.connect(tabId, config);
 
-        // Subscribe to all existing subscriptions
-        await this.resubscribeAllTopics(tabId);
-      }
+      // No need to set tab.connected here, it's already set by connectionStatusCallback
+      // The callback above handles the connected state
     } catch (error) {
       const tab = this.tabs.find(t => t.id === tabId);
       if (tab) {
@@ -152,23 +155,46 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
 
   private async resubscribeAllTopics(tabId: number): Promise<void> {
     const tab = this.tabs.find(t => t.id === tabId);
-    if (!tab || !tab.connected) {
+    if (!tab) {
+      console.warn(`⚠️ resubscribeAllTopics: Tab ${tabId} not found!`);
       return;
     }
 
-    console.log(`Resubscribing to all topics for tab ${tabId}...`);
+    if (!tab.connected) {
+      console.warn(`⚠️ resubscribeAllTopics: Tab ${tabId} is not connected, skipping subscription`);
+      return;
+    }
+
+    console.log(`🔄 resubscribeAllTopics: Starting subscription for tab ${tabId}, total topics: ${tab.subscriptions.length}`);
+
+    if (tab.subscriptions.length === 0) {
+      console.log(`ℹ️ resubscribeAllTopics: No subscriptions to process for tab ${tabId}`);
+      return;
+    }
+
+    // Add a small delay to ensure connection is fully established
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     for (const subscription of tab.subscriptions) {
+      // Check connection status before each subscription attempt
+      if (!this.mqttClientService.isConnected(tabId)) {
+        console.warn(`⚠️ Connection lost during resubscription for tab ${tabId}, stopping`);
+        break;
+      }
+
       try {
+        console.log(`📝 Subscribing to: ${subscription.topic} for tab ${tabId}...`);
         await this.mqttClientService.subscribe(tabId, subscription.topic, 0);
         subscription.subscribed = true;
-        console.log(`Resubscribed to: ${subscription.topic}`);
+        console.log(`✅ Successfully subscribed to: ${subscription.topic}`);
       } catch (error) {
-        console.error(`Failed to resubscribe to ${subscription.topic}:`, error);
+        console.error(`❌ Failed to subscribe to ${subscription.topic}:`, error);
         subscription.subscribed = false;
+        // Continue with next subscription instead of stopping
       }
     }
 
+    console.log(`✅ resubscribeAllTopics: Completed for tab ${tabId}`);
     this.debounceSave();
   }
 
@@ -698,6 +724,12 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
   onReconnectRequested(tabId: number): void {
     const tab = this.tabs.find(t => t.id === tabId);
     if (!tab || !tab.config) {
+      return;
+    }
+
+    // Check if already connected
+    if (tab.connected) {
+      console.log(`Tab ${tab.label} is already connected, skipping reconnection`);
       return;
     }
 
