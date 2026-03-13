@@ -29,7 +29,7 @@ export class MessageEditorComponent {
   @Output() editorNameEditRequested = new EventEmitter<number>();
   @Output() editorJsonFormatted = new EventEmitter<number>();
   @Output() editorsReordered = new EventEmitter<MessageEditor[]>();
-  @Output() messageSent = new EventEmitter<void>();
+  @Output() messageSent = new EventEmitter<number>();
   @Output() editorDataChanged = new EventEmitter<void>();
 
   draggedEditorId: number | null = null;
@@ -63,8 +63,14 @@ export class MessageEditorComponent {
     this.editorJsonFormatted.emit(editorId);
   }
 
-  sendMessage(): void {
-    this.messageSent.emit();
+  sendMessage(event: Event, editorId: number): void {
+    event.stopPropagation();
+
+    if (this.selectedEditorId !== editorId) {
+      this.selectEditor(editorId);
+    }
+
+    this.messageSent.emit(editorId);
   }
 
   onDataChange(): void {

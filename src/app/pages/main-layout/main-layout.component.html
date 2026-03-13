@@ -2,10 +2,17 @@
 
 <div class="mqtt-container">
   <!-- Connection Manager (Header, Tabs, Config Dialog) -->
-  <app-connection-manager [tabs]="connectionTabs" [activeTabId]="activeTabId" [isElectron]="isElectron"
-    [nextTabId]="nextTabId" (tabSelected)="onTabSelected($event)" (tabCloseRequested)="onTabCloseRequested($event)"
-    (tabsUpdated)="onTabsUpdated($event)" (configSaved)="onConfigSaved($event)"
-    (reconnectRequested)="onReconnectRequested($event)">
+  <app-connection-manager
+    [tabs]="connectionTabs"
+    [activeTabId]="activeTabId"
+    [isElectron]="isElectron"
+    [nextTabId]="nextTabId"
+    (tabSelected)="onTabSelected($event)"
+    (tabCloseRequested)="onTabCloseRequested($event)"
+    (tabsUpdated)="onTabsUpdated($event)"
+    (configSaved)="onConfigSaved($event)"
+    (reconnectRequested)="onReconnectRequested($event)"
+  >
   </app-connection-manager>
 
   <!-- Main Content Area -->
@@ -14,9 +21,14 @@
     <div class="top-row" [style.height.%]="subscribeAreaHeight">
       <!-- Left Panel: Send to Topic -->
       <div class="left-panel" [style.width.%]="leftPanelWidth">
-        <app-send-topic-list [topics]="sendTopics" [selectedTopicId]="selectedSendTopicId" [isDisabled]="!currentTab"
-          [nextTopicId]="currentTab?.nextTopicId || 1" (topicSelected)="onSendTopicSelected($event)"
-          (topicsUpdated)="onSendTopicsUpdated($event)">
+        <app-send-topic-list
+          [topics]="sendTopics"
+          [selectedTopicId]="selectedSendTopicId"
+          [isDisabled]="!currentTab"
+          [nextTopicId]="currentTab?.nextTopicId || 1"
+          (topicSelected)="onSendTopicSelected($event)"
+          (topicsUpdated)="onSendTopicsUpdated($event)"
+        >
         </app-send-topic-list>
       </div>
 
@@ -25,27 +37,41 @@
 
       <!-- Right Panel: Subscribe Topics -->
       <div class="subscribe-area">
-        <app-subscribe-topics [subscriptions]="subscriptions" [isConnected]="currentTab?.connected || false"
-          [isDisabled]="!currentTab" (subscriptionAdded)="onSubscriptionAdded()"
-          (subscriptionDeleted)="onSubscriptionDeleted($event)" (subscriptionEdited)="onSubscriptionEdited($event)"
+        <app-subscribe-topics
+          [subscriptions]="subscriptions"
+          [isConnected]="currentTab?.connected || false"
+          [isDisabled]="!currentTab"
+          (subscriptionAdded)="onSubscriptionAdded()"
+          (subscriptionDeleted)="onSubscriptionDeleted($event)"
+          (subscriptionEdited)="onSubscriptionEdited($event)"
           (subscriptionMessagesCleared)="onSubscriptionMessagesCleared($event)"
-          (subscriptionsReordered)="onSubscriptionsReordered($event)">
+          (subscriptionsReordered)="onSubscriptionsReordered($event)"
+        >
         </app-subscribe-topics>
       </div>
     </div>
 
     <!-- Vertical Resize Handle -->
-    <div class="resize-handle-horizontal" (mousedown)="startVerticalResize($event)"></div>
+    <div
+      class="resize-handle-horizontal"
+      (mousedown)="startVerticalResize($event)"
+    ></div>
 
     <!-- Bottom Row: Message Editor (Full Width) -->
     <div class="message-editor-area">
-      <app-message-editor [editors]="messageEditors" [selectedEditorId]="selectedMessageEditorId"
-        [isDisabled]="!currentTab" (editorAdded)="onMessageEditorAdded()"
-        (editorSelected)="onMessageEditorSelected($event)" (editorDeleted)="onMessageEditorDeleted($event)"
+      <app-message-editor
+        [editors]="messageEditors"
+        [selectedEditorId]="selectedMessageEditorId"
+        [isDisabled]="!currentTab"
+        (editorAdded)="onMessageEditorAdded()"
+        (editorSelected)="onMessageEditorSelected($event)"
+        (editorDeleted)="onMessageEditorDeleted($event)"
         (editorNameEditRequested)="onMessageEditorNameEditRequested($event)"
         (editorJsonFormatted)="onMessageEditorJsonFormatted($event)"
-        (editorsReordered)="onMessageEditorsReordered($event)" (messageSent)="onMessageSent()"
-        (editorDataChanged)="onDataChange()">
+        (editorsReordered)="onMessageEditorsReordered($event)"
+        (messageSent)="onMessageSent($event)"
+        (editorDataChanged)="onDataChange()"
+      >
       </app-message-editor>
     </div>
   </div>
@@ -53,96 +79,153 @@
 
 <!-- Subscription Dialog -->
 @if (showSubscriptionDialog) {
-<div class="dialog-overlay" (click)="closeSubscriptionDialog()">
-  <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
-    <div class="dialog-header">
-      <h2>Subscribe to Topic</h2>
-      <button class="dialog-close" (click)="closeSubscriptionDialog()">&times;</button>
-    </div>
-    <div class="dialog-content">
-      <form class="mqtt-form">
-        <div class="form-group">
-          <label>Topic *</label>
-          <input type="text" [(ngModel)]="newSubscriptionTopic" name="topic"
-            placeholder="sensor/temperature or sensor/#" required autofocus />
-        </div>
-      </form>
-    </div>
-    <div class="dialog-footer">
-      <button class="btn-secondary" (click)="closeSubscriptionDialog()">Cancel</button>
-      <button class="btn-primary" (click)="saveSubscription()">Subscribe</button>
+  <div class="dialog-overlay">
+    <div
+      class="dialog-container dialog-small"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="dialog-header">
+        <h2>Subscribe to Topic</h2>
+        <button class="dialog-close" (click)="closeSubscriptionDialog()">
+          &times;
+        </button>
+      </div>
+      <div class="dialog-content">
+        <form class="mqtt-form">
+          <div class="form-group">
+            <label>Topic *</label>
+            <input
+              type="text"
+              [(ngModel)]="newSubscriptionTopic"
+              name="topic"
+              placeholder="sensor/temperature or sensor/#"
+              required
+              autofocus
+            />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeSubscriptionDialog()">
+          Cancel
+        </button>
+        <button class="btn-primary" (click)="saveSubscription()">
+          Subscribe
+        </button>
+      </div>
     </div>
   </div>
-</div>
 }
 
 <!-- Edit Subscription Dialog -->
 @if (showEditSubscriptionDialog) {
-<div class="dialog-overlay" (click)="closeEditSubscriptionDialog()">
-  <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
-    <div class="dialog-header">
-      <h2>Edit Subscription</h2>
-      <button class="dialog-close" (click)="closeEditSubscriptionDialog()">&times;</button>
-    </div>
-    <div class="dialog-content">
-      <form class="mqtt-form">
-        <div class="form-group">
-          <label>Topic *</label>
-          <input type="text" [(ngModel)]="editSubscriptionTopic" name="editTopic"
-            placeholder="sensor/temperature or sensor/#" required autofocus
-            (keydown.enter)="saveEditedSubscription()" />
-        </div>
-      </form>
-    </div>
-    <div class="dialog-footer">
-      <button class="btn-secondary" (click)="closeEditSubscriptionDialog()">Cancel</button>
-      <button class="btn-primary" (click)="saveEditedSubscription()">Save & Resubscribe</button>
+  <div class="dialog-overlay">
+    <div
+      class="dialog-container dialog-small"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="dialog-header">
+        <h2>Edit Subscription</h2>
+        <button class="dialog-close" (click)="closeEditSubscriptionDialog()">
+          &times;
+        </button>
+      </div>
+      <div class="dialog-content">
+        <form class="mqtt-form">
+          <div class="form-group">
+            <label>Topic *</label>
+            <input
+              type="text"
+              [(ngModel)]="editSubscriptionTopic"
+              name="editTopic"
+              placeholder="sensor/temperature or sensor/#"
+              required
+              autofocus
+              (keydown.enter)="saveEditedSubscription()"
+            />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeEditSubscriptionDialog()">
+          Cancel
+        </button>
+        <button class="btn-primary" (click)="saveEditedSubscription()">
+          Save & Resubscribe
+        </button>
+      </div>
     </div>
   </div>
-</div>
 }
 
 <!-- Message Editor Name Dialog -->
 @if (showMessageEditorNameDialog) {
-<div class="dialog-overlay" (click)="closeMessageEditorNameDialog()">
-  <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
-    <div class="dialog-header">
-      <h2>{{ editingMessageEditorId === null ? 'New Message' : 'Edit Message Name' }}</h2>
-      <button class="dialog-close" (click)="closeMessageEditorNameDialog()">&times;</button>
-    </div>
-    <div class="dialog-content">
-      <form class="mqtt-form">
-        <div class="form-group">
-          <label>Name *</label>
-          <input type="text" [(ngModel)]="messageEditorNameInput" name="name" placeholder="Message name" required
-            autofocus />
-        </div>
-      </form>
-    </div>
-    <div class="dialog-footer">
-      <button class="btn-secondary" (click)="closeMessageEditorNameDialog()">Cancel</button>
-      <button class="btn-primary"
-        (click)="saveMessageEditorName()">{{ editingMessageEditorId === null ? 'Create' : 'Save' }}</button>
+  <div class="dialog-overlay">
+    <div
+      class="dialog-container dialog-small"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="dialog-header">
+        <h2>
+          {{
+            editingMessageEditorId === null
+              ? "New Message"
+              : "Edit Message Name"
+          }}
+        </h2>
+        <button class="dialog-close" (click)="closeMessageEditorNameDialog()">
+          &times;
+        </button>
+      </div>
+      <div class="dialog-content">
+        <form class="mqtt-form">
+          <div class="form-group">
+            <label>Name *</label>
+            <input
+              type="text"
+              [(ngModel)]="messageEditorNameInput"
+              name="name"
+              placeholder="Message name"
+              required
+              autofocus
+            />
+          </div>
+        </form>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeMessageEditorNameDialog()">
+          Cancel
+        </button>
+        <button class="btn-primary" (click)="saveMessageEditorName()">
+          {{ editingMessageEditorId === null ? "Create" : "Save" }}
+        </button>
+      </div>
     </div>
   </div>
-</div>
 }
 
 <!-- Confirm Dialog -->
 @if (showConfirmDialog) {
-<div class="dialog-overlay" (click)="closeConfirmDialog()">
-  <div class="dialog-container dialog-small" (click)="$event.stopPropagation()">
-    <div class="dialog-header">
-      <h2>{{ confirmDialogTitle }}</h2>
-      <button class="dialog-close" (click)="closeConfirmDialog()">&times;</button>
-    </div>
-    <div class="dialog-content">
-      <p class="confirm-message">{{ confirmDialogMessage }}</p>
-    </div>
-    <div class="dialog-footer">
-      <button class="btn-secondary" (click)="closeConfirmDialog()">Cancel</button>
-      <button class="btn-danger" (click)="confirmAction()">Confirm</button>
+  <div class="dialog-overlay">
+    <div
+      class="dialog-container dialog-small"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="dialog-header">
+        <h2>{{ confirmDialogTitle }}</h2>
+        <button class="dialog-close" (click)="closeConfirmDialog()">
+          &times;
+        </button>
+      </div>
+      <div class="dialog-content">
+        <p class="confirm-message">{{ confirmDialogMessage }}</p>
+      </div>
+      <div class="dialog-footer">
+        <button class="btn-secondary" (click)="closeConfirmDialog()">
+          Cancel
+        </button>
+        <button class="btn-danger" (click)="confirmAction()">Confirm</button>
+      </div>
     </div>
   </div>
-</div>
 }

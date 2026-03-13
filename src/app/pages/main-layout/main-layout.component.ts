@@ -712,8 +712,8 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     this.debounceSave();
   }
 
-  onMessageSent(): void {
-    this.sendMessage();
+  onMessageSent(editorId: number): void {
+    this.sendMessage(editorId);
   }
 
   // Connection Manager Component Event Handlers
@@ -836,11 +836,16 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     }
   }
 
-  sendMessage(): void {
+  sendMessage(editorId?: number): void {
     if (!this.currentTab) return;
 
-    const selectedEditor = this.currentTab.messageEditors.find(e => e.id === this.currentTab!.selectedMessageEditorId);
+    const targetEditorId = editorId ?? this.currentTab.selectedMessageEditorId;
+    const selectedEditor = this.currentTab.messageEditors.find(e => e.id === targetEditorId);
     if (!selectedEditor) return;
+
+    if (this.currentTab.selectedMessageEditorId !== selectedEditor.id) {
+      this.currentTab.selectedMessageEditorId = selectedEditor.id;
+    }
 
     const selectedTopic = this.currentTab.sendTopics.find(t => t.id === this.currentTab!.selectedSendTopicId);
     if (!selectedTopic) {
